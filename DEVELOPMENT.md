@@ -426,4 +426,25 @@ a later phase.
   future one) plus a freshness flag. The script itself is standalone — not
   wired into `main.py` yet — but its output CSV is shown on the dashboard's
   **Combined Intelligence** page (step 7.10), the first page that interprets
-  weather risk, soil c
+  weather risk, soil conditions, and vegetation health together. This is
+  still prep work for FAO-56 modeling and (much later) ML.
+- `src/water_balance/fao56_water_balance.py` (step 7.11) — computes a daily
+  FAO-56 Penman-Monteith soil-water balance (ET0, ETc, TAW, RAW, root-zone
+  depletion, Ks water-stress coefficient) from the combined feature table,
+  writing `data/processed/muthukur_fao56_water_balance.csv`. Shown on the
+  dashboard's **Water Balance** page (step 7.12) — the first
+  physics-informed water-stress view in the project. Standalone — **not
+  wired into `main.py` yet**. Known limitations of this prototype: a
+  constant crop coefficient (Kc = 0.75, not phenology-aware), rainfed-only
+  depletion (no modeled irrigation events), no runoff/deep-percolation
+  accounting, and no field validation.
+- `src/water_balance/fao56_phenology_water_balance.py` (step 7.13) — a
+  separate, parallel FAO-56 script that joins the combined feature table
+  with the mango phenology calendar and assigns Kc by growth stage instead
+  of the constant 0.75, reusing the same ET0/TAW/RAW/depletion logic as
+  `fao56_water_balance.py`. Writes
+  `data/processed/muthukur_fao56_phenology_water_balance.csv`. Does not
+  modify the original constant-Kc script or CSV. Shown on the dashboard's
+  **Phenology Water Balance** page (step 7.14). Standalone with respect to
+  the pipeline — not wired into `main.py`. Kc values are first-pass
+  assumptions, not field-calibrated or cultivar-specific.

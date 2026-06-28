@@ -256,4 +256,6 @@ Possible proposal framing:
 
 ## Sequencing Rule
 
-PC (engineering, dash
+PC (engineering, dashboards, pipelines, small experiments) → GCP (storage,
+scheduling, deployment, Earth Engine) → IndiaAI Compute (only once a genuine
+GPU/scale need exists). No phase is skipped ahead of its prerequisite.

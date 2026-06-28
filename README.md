@@ -516,4 +516,32 @@ Planned future upgrades:
 - Add Ensemble Kalman Filter state estimation
 - Add Monte Carlo uncertainty simulation
 - Add GCP deployment
-- Add PostGIS support for 
+- Add PostGIS support for farm boundary and parcel-level analysis
+- Add validation against yield, APMC arrivals, or disease records
+- Explore IndiaAI Compute only if a genuine GPU/scale need arises
+
+See `MILESTONE_SUMMARY.md` for a beginner-friendly snapshot of what is and isn't built yet.
+
+---
+
+## 15. Research Direction
+
+This project supports the idea of a sensor-free digital twin for mango orchard risk intelligence.
+
+Research framing:
+
+
+A sensor-free digital twin framework for mango orchards that integrates public weather, forecast, and soil intelligence to estimate irrigation stress, heat stress, and disease-friendly weather risk without field-deployed IoT sensors.
+
+
+Future research version:
+
+
+A sensor-free, phenology-aware, Bayesian digital twin for mango orchard risk forecasting using Earth observation, agro-weather fusion, soil intelligence, and physics-informed data assimilation.
+
+
+---
+
+## 16. Disclaimer
+
+This project is a research and prototype system. The risk scores are not final agronomic recommendations. Field validation, expert calibration, and local farmer observations are required before operational use.

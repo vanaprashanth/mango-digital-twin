@@ -247,4 +247,36 @@ are unchanged by this addition.
 - No raster export/download workflow yet (only scalar index values are
   computed; no satellite images are saved).
 - No field/yield validation yet (risk scores and both FAO-56 outputs have
-  not been checked against real orchard outco
+  not been checked against real orchard outcomes).
+- The combined feature table and both FAO-56 water balance scripts are not
+  yet wired into `main.py` — all are still standalone scripts.
+
+## Recommended Next Steps
+
+1. **Documentation checkpoint** — this milestone summary, plus the updated
+   `README.md`, `ROADMAP.md`, and `DEVELOPMENT.md`, freeze a clear record of
+   the phenology-aware FAO-56 standalone milestone before dashboard
+   visualization work begins.
+2. **Optional Git commit** — commit this stable state as a checkpoint that
+   can be returned to if later changes need to be rolled back.
+3. **Add the combined table and both FAO-56 scripts to the main pipeline
+   only after reviewing their stability** — once confident in their
+   behavior over more data, consider wiring them into `main.py` so they run
+   automatically.
+4. **Calibrate the phenology-aware Kc values** against local or
+   cultivar-specific data as it becomes available.
+5. **Add irrigation-event, runoff, and deep-percolation tracking** to the
+   water balance, moving it past a rainfed-only prototype.
+6. **Later, prepare cloud deployment** — once the local system and
+   phenology work are stable, move storage, scheduling, and the dashboard
+   to the cloud (GCP, as planned in `ROADMAP.md`).
+7. **Later, explore IndiaAI only if GPU-heavy work is needed** — for example,
+   if a future ML or deep-learning model genuinely requires GPU compute at
+   scale.
+
+---
+
+This project is a research and prototype system. The risk scores and
+vegetation interpretations are not final agronomic recommendations. Field
+validation, expert calibration, and local farmer observations are still
+required before any operational use.
