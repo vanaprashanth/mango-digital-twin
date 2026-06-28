@@ -149,7 +149,7 @@ the limitations above being addressed.
 
 ---
 
-## Phase 5 — Phenology-Aware Mango Digital Twin
+## Phase 5 — Phenology-Aware Mango Digital Twin (in progress, standalone steps completed)
 
 Replace the FAO-56 prototype's constant crop coefficient (Kc = 0.75) with
 growth-stage-specific Kc values, and add mango growth-stage logic generally:
@@ -166,6 +166,45 @@ Risk should change by stage:
 2. Rainfall/humidity during flowering or fruiting may increase disease risk
 3. Water stress during fruit development may affect yield
 4. Forecast alerts depend on the current mango stage
+
+Completed so far, fully local, standalone (no cloud, no GPU, no raster
+downloads):
+
+1. [DONE] Mango phenology calendar (`src/phenology/mango_phenology_calendar.py`)
+   — a simplified, regional (Andhra Pradesh / South India) growth-stage
+   calendar, not cultivar-specific and not field-validated. Output:
+   `data/processed/muthukur_mango_phenology_calendar.csv`. Also has its own
+   Mango Phenology dashboard page.
+2. [DONE] Phenology-aware Kc standalone FAO-56 script
+   (`src/water_balance/fao56_phenology_water_balance.py`) — joins the
+   combined feature table with the phenology calendar by date and assigns
+   Kc per growth stage (see table below) instead of the constant Kc = 0.75,
+   reusing the same ET0/TAW/RAW/depletion logic as the original FAO-56
+   script. Output: `data/processed/muthukur_fao56_phenology_water_balance.csv`.
+   The original constant-Kc FAO-56 script and CSV are untouched.
+
+Kc values used (first-pass assumptions, not field-calibrated):
+
+| Growth stage | Kc |
+|---|---|
+| Flower induction / pre-flowering | 0.65 |
+| Flowering | 0.75 |
+| Fruit set | 0.85 |
+| Fruit development | 0.90 |
+| Maturity / harvest | 0.80 |
+| Rest / vegetative phase | 0.60 |
+
+Not yet done from Phase 5 scope (kept as future work, not started):
+
+- Dashboard integration of the phenology-aware FAO-56 output (still
+  standalone only — no dashboard page yet for this script)
+- Wiring either phenology script into `main.py`
+- Local/cultivar-specific Kc calibration (current values are generic
+  FAO-56/mango guidance, not measured at this orchard)
+- Irrigation-event modeling (still rainfed-only depletion)
+- Field/yield validation
+- Phenology-aware heat/disease/forecast risk logic beyond Kc (items 1-4
+  in the "Risk should change by stage" list above)
 
 ---
 

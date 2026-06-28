@@ -75,6 +75,19 @@ fao56:
                        # documented simplification, not a precise value.
   albedo: 0.23  # FAO-56 reference crop albedo (Chapter 4), used in the net
                   # shortwave radiation term of the ET0 equation.
+  # Stage-aware Kc values, used ONLY by the new standalone script
+  # src/water_balance/fao56_phenology_water_balance.py (Phase 5, first
+  # version). These are FIRST-PASS ASSUMPTIONS based on general mango/FAO-56
+  # guidance, NOT field-calibrated for this specific orchard or cultivar.
+  # The original kc_constant above is left untouched and still used by the
+  # original src/water_balance/fao56_water_balance.py.
+  phenology_kc_stages:
+    "Flower induction / pre-flowering": 0.65
+    "Flowering": 0.75
+    "Fruit set": 0.85
+    "Fruit development": 0.90
+    "Maturity / harvest": 0.80
+    "Rest / vegetative phase": 0.60
 
 # Mango phenology calendar settings (standalone prep phase — see
 # src/phenology/mango_phenology_calendar.py). This is a SIMPLIFIED, REGIONAL
@@ -103,6 +116,7 @@ paths:
   combined_feature_table_csv: "data/processed/muthukur_combined_feature_table.csv"
   fao56_water_balance_csv: "data/processed/muthukur_fao56_water_balance.csv"
   mango_phenology_calendar_csv: "data/processed/muthukur_mango_phenology_calendar.csv"
+  fao56_phenology_water_balance_csv: "data/processed/muthukur_fao56_phenology_water_balance.csv"
 
 risk_thresholds:
   classification:

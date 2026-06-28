@@ -68,6 +68,8 @@ pages, navigated from the sidebar:
 - `data/processed/muthukur_sentinel2_daily_indices.csv` (one row per day, vegetation only)
 - `data/processed/muthukur_combined_feature_table.csv` (weather + soil + vegetation, one row per weather date)
 - `data/processed/muthukur_fao56_water_balance.csv` (FAO-56 soil-water balance: ET0, ETc, depletion, Ks, TAW, RAW, one row per date)
+- `data/processed/muthukur_mango_phenology_calendar.csv` (one mango growth stage per date)
+- `data/processed/muthukur_fao56_phenology_water_balance.csv` (phenology-aware FAO-56 soil-water balance: stage, Kc, ET0, ETc, depletion, Ks, TAW, RAW, water-stress score/level, one row per date)
 
 ## Current Risk Models
 
@@ -146,46 +148,97 @@ Water Balance dashboard page carries that disclaimer directly.
 
 ---
 
+## Phenology-Aware FAO-56 Crop Coefficient Milestone (new)
+
+`src/water_balance/fao56_phenology_water_balance.py` is a second, separate
+standalone script that replaces the constant Kc = 0.75 above with a
+growth-stage-specific Kc, using a new mango phenology calendar
+(`src/phenology/mango_phenology_calendar.py`) as its growth-stage source.
+The original constant-Kc FAO-56 script and CSV are untouched.
+
+- **Inputs:**
+  - `data/processed/muthukur_combined_feature_table.csv` (weather + soil +
+    vegetation feature table)
+  - `data/processed/muthukur_mango_phenology_calendar.csv` (a simplified,
+    regional Andhra Pradesh / South India growth-stage calendar — one mango
+    stage per date, not cultivar-specific)
+- **Output:** `data/processed/muthukur_fao56_phenology_water_balance.csv` —
+  one row per date with `mango_stage`, `kc`, `et0_mm_day`, `etc_mm_day`,
+  `rainfall_mm`, `root_zone_depletion_mm`, `taw_mm`, `raw_mm`, `ks`,
+  `water_stress_score`, `water_stress_level`, plus vegetation/soil context
+  columns where available.
+- **Method:** joins the two input tables by date, looks up Kc by
+  `mango_stage`, then reuses the same ET0 (FAO-56 Penman-Monteith) and
+  TAW/RAW/depletion logic as the original constant-Kc script — so the two
+  scripts can never disagree on the underlying water-balance math, only on
+  Kc.
+- **Kc stage assumptions (first version):**
+
+  | Growth stage | Kc |
+  |---|---|
+  | Flower induction / pre-flowering | 0.65 |
+  | Flowering | 0.75 |
+  | Fruit set | 0.85 |
+  | Fruit development | 0.90 |
+  | Maturity / harvest | 0.80 |
+  | Rest / vegetative phase | 0.60 |
+
+- **Limitations:**
+  - Kc values are assumed, based on general mango/FAO-56 guidance — not
+    locally calibrated for this orchard.
+  - No cultivar-specific calibration yet.
+  - No irrigation events yet (still rainfed-only depletion, same as the
+    constant-Kc script).
+  - No field validation yet.
+  - Not yet integrated into the dashboard or `main.py` — this script is
+    standalone only and currently has no dashboard page of its own.
+
+---
+
 ## What Has Not Been Done Yet
 
-- No phenology-aware mango growth-stage model yet (FAO-56 Kc is currently a
-  constant, not stage-specific).
-- No irrigation-event modeling in the water balance (rainfed-only
+- No dashboard page for the phenology-aware FAO-56 output yet (the
+  constant-Kc version has a Water Balance page; the phenology-aware version
+  does not yet).
+- No local/cultivar-specific calibration of the phenology-aware Kc values —
+  they are first-pass assumptions from general guidance.
+- No irrigation-event modeling in either water balance (rainfed-only
   depletion).
 - No runoff or deep-percolation tracking in the water balance.
+- No phenology-aware heat/disease/forecast risk logic yet (only Kc is
+  stage-aware so far).
 - No machine-learning model yet.
 - No cloud deployment yet.
 - No IndiaAI/GPU usage yet.
 - No raster export/download workflow yet (only scalar index values are
   computed; no satellite images are saved).
-- No field/yield validation yet (risk scores and FAO-56 output have not
-  been checked against real orchard outcomes).
-- The combined feature table and the FAO-56 water balance script are not
-  yet wired into `main.py` — both are still standalone scripts, read
-  directly by the dashboard only.
+- No field/yield validation yet (risk scores and both FAO-56 outputs have
+  not been checked against real orchard outcomes).
+- The combined feature table and both FAO-56 water balance scripts are not
+  yet wired into `main.py` — all are still standalone scripts.
 
 ## Recommended Next Steps
 
 1. **Documentation checkpoint** — this milestone summary, plus the updated
    `README.md`, `ROADMAP.md`, and `DEVELOPMENT.md`, freeze a clear record of
-   what exists (including the FAO-56 prototype) before phenology-aware
-   modeling begins.
+   the phenology-aware FAO-56 standalone milestone before dashboard
+   visualization work begins.
 2. **Optional Git commit** — commit this stable state as a checkpoint that
    can be returned to if later changes need to be rolled back.
-3. **Add the combined table and FAO-56 script to the main pipeline only
-   after reviewing their stability** — once confident in their behavior
-   over more data, consider wiring both into `main.py` so they run
+3. **Add a dashboard page for the phenology-aware FAO-56 output** —
+   mirroring the existing Water Balance page, once ready.
+4. **Add the combined table and both FAO-56 scripts to the main pipeline
+   only after reviewing their stability** — once confident in their
+   behavior over more data, consider wiring them into `main.py` so they run
    automatically.
-4. **Add phenology-aware mango logic** — replace the FAO-56 model's
-   constant Kc with growth-stage-specific values (dormancy, flowering,
-   fruit set, fruit development, maturity), and let risk interpretation
-   change by stage.
-5. **Add irrigation-event, runoff, and deep-percolation tracking** to the
+5. **Calibrate the phenology-aware Kc values** against local or
+   cultivar-specific data as it becomes available.
+6. **Add irrigation-event, runoff, and deep-percolation tracking** to the
    water balance, moving it past a rainfed-only prototype.
-6. **Later, prepare cloud deployment** — once the local system and
+7. **Later, prepare cloud deployment** — once the local system and
    phenology work are stable, move storage, scheduling, and the dashboard
    to the cloud (GCP, as planned in `ROADMAP.md`).
-7. **Later, explore IndiaAI only if GPU-heavy work is needed** — for example,
+8. **Later, explore IndiaAI only if GPU-heavy work is needed** — for example,
    if a future ML or deep-learning model genuinely requires GPU compute at
    scale.
 

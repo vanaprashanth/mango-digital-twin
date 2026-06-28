@@ -43,6 +43,7 @@ The current MVP includes:
 - A Combined Intelligence dashboard page that interprets weather risk, soil conditions, and vegetation health together, with freshness-aware warnings
 - A standalone FAO-56 Penman-Monteith soil-water balance prototype (ET0, ETc, root-zone depletion, Ks water-stress coefficient, TAW, RAW)
 - A Water Balance dashboard page showing the FAO-56 output, marked as a simplified rainfed prototype
+- A mango phenology calendar (regional, generic growth-stage dates) and a phenology-aware FAO-56 standalone script that assigns crop coefficient (Kc) by growth stage instead of a constant value — currently standalone, not yet shown on the dashboard
 
 ---
 
@@ -379,7 +380,44 @@ High humidity, suitable temperature, and recent rainfall increase disease-friend
 
 ---
 
-## 10. Dashboard Sections
+## 10. Phenology-Aware FAO-56 Water-Balance Model (Standalone)
+
+In addition to the constant-Kc FAO-56 prototype above, the project has a
+second, separate standalone script that makes the crop coefficient (Kc)
+growth-stage-aware instead of constant:
+
+- **Mango phenology calendar** — `src/phenology/mango_phenology_calendar.py`
+  assigns one growth stage per calendar date using a simplified, regional
+  (Andhra Pradesh / South India) seasonal calendar. It is not calibrated to
+  a specific cultivar or to field observations at this study site. Output:
+  `data/processed/muthukur_mango_phenology_calendar.csv`.
+- **Phenology-aware FAO-56 script** —
+  `src/water_balance/fao56_phenology_water_balance.py` joins the combined
+  feature table with the phenology calendar by date, then looks up a Kc
+  value per growth stage instead of using the constant Kc = 0.75. It reuses
+  the same ET0 / TAW / RAW / depletion logic as the original FAO-56 script.
+  Output: `data/processed/muthukur_fao56_phenology_water_balance.csv`.
+
+Stage-aware Kc values used (first-pass assumptions, not field-calibrated):
+
+| Growth stage | Kc |
+|---|---|
+| Flower induction / pre-flowering | 0.65 |
+| Flowering | 0.75 |
+| Fruit set | 0.85 |
+| Fruit development | 0.90 |
+| Maturity / harvest | 0.80 |
+| Rest / vegetative phase | 0.60 |
+
+The original constant-Kc FAO-56 script and its output CSV are untouched —
+this is a separate, parallel script and output file. **This model is
+currently standalone only: it is not yet wired into `main.py`, and it does
+not yet have its own dashboard page.** See `ROADMAP.md` and
+`MILESTONE_SUMMARY.md` for limitations and next steps.
+
+---
+
+## 11. Dashboard Sections
 
 The Streamlit dashboard uses sidebar navigation with one page per topic, plus a
 data source status panel (last-updated badges for each raw/processed file)
@@ -399,7 +437,7 @@ See `ROADMAP.md` for the full multi-phase development plan (local PC → cloud �
 
 ---
 
-## 11. What-if Simulator
+## 12. What-if Simulator
 
 The what-if simulator allows the user to test changes in:
 
@@ -423,7 +461,7 @@ This simulates wet and humid disease-friendly conditions.
 
 ---
 
-## 12. Current Project Status
+## 13. Current Project Status
 
 Completed:
 
@@ -451,21 +489,24 @@ Completed:
 - Combined Intelligence dashboard page — the first true digital-twin view interpreting weather risk, soil conditions, and vegetation health together
 - Standalone FAO-56 Penman-Monteith soil-water balance script (`src/water_balance/fao56_water_balance.py`), computing ET0, ETc, root-zone depletion, the Ks water-stress coefficient, TAW, and RAW
 - Water Balance dashboard page — the first physics-informed water-stress view in the project, with a clear disclaimer that it is a simplified rainfed prototype (constant Kc, no irrigation events, no runoff/deep percolation tracking, no field validation yet)
+- Mango phenology calendar (`src/phenology/mango_phenology_calendar.py`) — a regional, generic growth-stage calendar assigning one mango stage per date
+- Phenology-aware FAO-56 standalone script (`src/water_balance/fao56_phenology_water_balance.py`) — joins the combined feature table with the phenology calendar and assigns Kc by growth stage instead of a constant value, reusing the same ET0/TAW/RAW/depletion logic as the original FAO-56 script
 
-Note: the combined feature table, Combined Intelligence page, FAO-56 script, and Water Balance page are all standalone so far — none of them are wired into `main.py` yet, and no phenology-aware modeling, ML, or cloud/GPU work has started.
+Note: the combined feature table, Combined Intelligence page, both FAO-56 scripts, and the Water Balance page are all standalone so far — none of them are wired into `main.py` yet. The phenology-aware FAO-56 script in particular has no dashboard page yet, and no ML or cloud/GPU work has started.
 
 Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for full detail): review stability of the combined feature table and FAO-56 output before wiring either into `main.py`, then phenology-aware crop coefficients/risk logic, and advanced modeling (Monte Carlo, Bayesian calibration, ML-based forecasting) — with cloud deployment and IndiaAI Compute as later-stage options only if a genuine deployment/GPU/scale need arises.
 
 ---
 
-## 13. Future Work
+## 14. Future Work
 
 Planned future upgrades:
 
-- Wire the combined weather/soil/vegetation feature table and the FAO-56 water balance script into `main.py` (only after their stability is reviewed)
-- Replace the current constant crop coefficient (Kc = 0.75) in the FAO-56 model with phenology-aware, growth-stage-specific Kc values
+- Wire the combined weather/soil/vegetation feature table and both FAO-56 water balance scripts into `main.py` (only after their stability is reviewed)
+- Add a dashboard page for the phenology-aware FAO-56 output (currently standalone only)
+- Calibrate the phenology-aware Kc stage values against local/cultivar-specific data (current values are first-pass assumptions)
 - Add irrigation-event, runoff, and deep-percolation tracking to the water balance (currently rainfed-only depletion)
-- Add phenology-aware mango risk modeling
+- Add phenology-aware mango risk modeling (beyond Kc — heat/disease/forecast risk by growth stage)
 - Add Ensemble Kalman Filter state estimation
 - Add Monte Carlo uncertainty simulation
 - Add GCP deployment
@@ -477,7 +518,7 @@ See `MILESTONE_SUMMARY.md` for a beginner-friendly snapshot of what is and isn't
 
 ---
 
-## 14. Research Direction
+## 15. Research Direction
 
 This project supports the idea of a sensor-free digital twin for mango orchard risk intelligence.
 
@@ -495,6 +536,6 @@ A sensor-free, phenology-aware, Bayesian digital twin for mango orchard risk for
 
 ---
 
-## 15. Disclaimer
+## 16. Disclaimer
 
 This project is a research and prototype system. The risk scores are not final agronomic recommendations. Field validation, expert calibration, and local farmer observations are required before operational use.

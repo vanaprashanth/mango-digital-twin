@@ -310,7 +310,40 @@ trend chart, a water-stress-level count chart, interpretation notes for
 each term, and an expandable raw table. It is read-only and does not
 change `main.py` or any other dashboard page.
 
-### 7.13 What's configured so far
+### 7.13 Build the phenology-aware FAO-56 soil-water balance (standalone, small CSV only)
+
+Once both the combined feature table and the mango phenology calendar
+(`data/processed/muthukur_mango_phenology_calendar.csv`) exist, you can
+compute a second, separate FAO-56 soil-water balance that uses a
+growth-stage-aware crop coefficient instead of the constant Kc = 0.75 —
+still standalone, no Earth Engine connection needed:
+
+```bash
+python src/water_balance/fao56_phenology_water_balance.py
+```
+
+Inputs:
+- `data/processed/muthukur_combined_feature_table.csv`
+- `data/processed/muthukur_mango_phenology_calendar.csv`
+
+Output: `data/processed/muthukur_fao56_phenology_water_balance.csv`
+
+This joins the two input tables by date, looks up a Kc value for each row's
+`mango_stage` (Flower induction/pre-flowering 0.65, Flowering 0.75, Fruit
+set 0.85, Fruit development 0.90, Maturity/harvest 0.80, Rest/vegetative
+0.60), and reuses the same ET0/TAW/RAW/depletion logic as
+`fao56_water_balance.py` (step 7.11) to compute `etc_mm_day`,
+`root_zone_depletion_mm`, `ks`, `water_stress_score`, and
+`water_stress_level`. It logs stage day counts, Kc-by-stage, and a
+water-stress breakdown. **The original constant-Kc FAO-56 script and its
+output CSV (step 7.11) are not modified.** This new script is currently
+**standalone only**: it is not wired into `main.py`, and it does not yet
+have its own dashboard page (unlike the constant-Kc version's Water Balance
+page in step 7.12). The Kc values above are first-pass assumptions based on
+general mango/FAO-56 guidance — not field-calibrated or cultivar-specific
+for this orchard.
+
+### 7.14 What's configured so far
 
 `configs/config.yaml` now has a `remote_sensing` section with the study
 area's latitude/longitude, an optional buffer radius (meters) for defining
@@ -376,3 +409,12 @@ a later phase.
   constant crop coefficient (Kc = 0.75, not phenology-aware), rainfed-only
   depletion (no modeled irrigation events), no runoff/deep-percolation
   accounting, and no field validation.
+- `src/water_balance/fao56_phenology_water_balance.py` (step 7.13) — a
+  separate, parallel FAO-56 script that joins the combined feature table
+  with the mango phenology calendar and assigns Kc by growth stage instead
+  of the constant 0.75, reusing the same ET0/TAW/RAW/depletion logic as
+  `fao56_water_balance.py`. Writes
+  `data/processed/muthukur_fao56_phenology_water_balance.csv`. Does not
+  modify the original constant-Kc script or CSV. Standalone — not wired
+  into `main.py`, and has no dashboard page of its own yet. Kc values are
+  first-pass assumptions, not field-calibrated or cultivar-specific.
