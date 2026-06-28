@@ -76,6 +76,20 @@ fao56:
   albedo: 0.23  # FAO-56 reference crop albedo (Chapter 4), used in the net
                   # shortwave radiation term of the ET0 equation.
 
+# Mango phenology calendar settings (standalone prep phase — see
+# src/phenology/mango_phenology_calendar.py). This is a SIMPLIFIED, REGIONAL
+# (Andhra Pradesh / South India) seasonal calendar, not calibrated to a
+# specific cultivar and not based on field observations at this study site.
+# It assigns one growth stage per calendar date using fixed month/day
+# boundaries below. Stage boundaries deliberately do not overlap — where the
+# rough month ranges suggested in project planning notes overlapped (e.g.
+# "flowering: Jan-Feb" and "fruit set: Feb-Mar"), a single cutover day was
+# chosen and is documented in the script itself. Not wired into main.py, the
+# FAO-56 water-balance script, or the dashboard yet.
+phenology:
+  region: "Andhra Pradesh / South India (generic mango calendar)"
+  cultivar: "Not cultivar-specific"
+
 paths:
   data_raw_dir: "data/raw"
   data_processed_dir: "data/processed"
@@ -88,6 +102,7 @@ paths:
   sentinel2_timeseries_csv: "data/processed/muthukur_sentinel2_index_timeseries.csv"
   combined_feature_table_csv: "data/processed/muthukur_combined_feature_table.csv"
   fao56_water_balance_csv: "data/processed/muthukur_fao56_water_balance.csv"
+  mango_phenology_calendar_csv: "data/processed/muthukur_mango_phenology_calendar.csv"
 
 risk_thresholds:
   classification:

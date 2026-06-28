@@ -121,6 +121,18 @@ REQUIRED_FAO56_OUTPUT_COLUMNS = [
     "water_stress_level",
 ]
 
+REQUIRED_PHENOLOGY_OUTPUT_COLUMNS = [
+    "date",
+    "month",
+    "day_of_year",
+    "mango_stage",
+    "stage_description",
+    "water_sensitivity",
+    "heat_sensitivity",
+    "disease_sensitivity",
+    "recommended_monitoring_focus",
+]
+
 
 class MissingColumnsError(ValueError):
     """Raised when a DataFrame is missing one or more required columns."""
@@ -180,3 +192,8 @@ def validate_fao56_input(df: pd.DataFrame) -> None:
 def validate_fao56_output(df: pd.DataFrame) -> None:
     """Validate the FAO-56 daily soil-water balance output table."""
     validate_columns(df, REQUIRED_FAO56_OUTPUT_COLUMNS, "FAO-56 soil-water balance output data")
+
+
+def validate_phenology_output(df: pd.DataFrame) -> None:
+    """Validate the mango phenology calendar output table."""
+    validate_columns(df, REQUIRED_PHENOLOGY_OUTPUT_COLUMNS, "Mango phenology calendar output data")
