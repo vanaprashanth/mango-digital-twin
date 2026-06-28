@@ -41,6 +41,8 @@ The current MVP includes:
 - A Vegetation Health dashboard page showing satellite-derived greenness/moisture/canopy-stress trends
 - A combined weather + soil + vegetation feature table joining historical risk data with the nearest-previous (never future) Sentinel-2 observation and static soil properties
 - A Combined Intelligence dashboard page that interprets weather risk, soil conditions, and vegetation health together, with freshness-aware warnings
+- A standalone FAO-56 Penman-Monteith soil-water balance prototype (ET0, ETc, root-zone depletion, Ks water-stress coefficient, TAW, RAW)
+- A Water Balance dashboard page showing the FAO-56 output, marked as a simplified rainfed prototype
 
 ---
 
@@ -389,6 +391,7 @@ in the sidebar:
 - **Soil Intelligence** — soil properties, soil-adjusted irrigation risk, soil interpretation notes, SoilGrids summary table
 - **Vegetation Health** — Sentinel-2 NDVI/NDWI/NDMI/NDRE trends, latest reading, greenness/moisture/canopy-stress interpretation, raw daily and image-level tables
 - **Combined Intelligence** — combined weather + soil + vegetation view: latest status metrics, date/freshness filters, risk and vegetation trend charts, a dual-axis irrigation-risk-vs-NDVI chart, freshness counts, water-stress/disease/combined-stress/staleness interpretation rules, and the raw combined table
+- **Water Balance** — FAO-56 soil-water balance output: latest ET0, ETc, root-zone depletion, Ks water-stress coefficient, TAW, RAW; ET0+ETc, rainfall+ETc, depletion (with RAW/TAW reference lines), and Ks trend charts; a water-stress-level count chart; interpretation notes; and the raw FAO-56 table. Carries an explicit disclaimer that this is a simplified rainfed prototype.
 - **What-if Simulator** — rainfall/temperature/humidity sliders, simulated risk, scenario explanation
 - **Raw Data** — expandable raw/processed tables (historical, forecast, SoilGrids, Sentinel-2 daily vegetation)
 
@@ -446,10 +449,12 @@ Completed:
 - Vegetation Health dashboard page (first remote-sensing data visible in the dashboard)
 - Combined weather + soil + vegetation feature table (`src/features/build_feature_table.py`), using nearest-previous (never future) Sentinel-2 matching and a data-freshness flag
 - Combined Intelligence dashboard page — the first true digital-twin view interpreting weather risk, soil conditions, and vegetation health together
+- Standalone FAO-56 Penman-Monteith soil-water balance script (`src/water_balance/fao56_water_balance.py`), computing ET0, ETc, root-zone depletion, the Ks water-stress coefficient, TAW, and RAW
+- Water Balance dashboard page — the first physics-informed water-stress view in the project, with a clear disclaimer that it is a simplified rainfed prototype (constant Kc, no irrigation events, no runoff/deep percolation tracking, no field validation yet)
 
-Note: the combined feature table and Combined Intelligence page are standalone so far — they are not yet wired into `main.py`, and no FAO-56, phenology, ML, or cloud/GPU work has started.
+Note: the combined feature table, Combined Intelligence page, FAO-56 script, and Water Balance page are all standalone so far — none of them are wired into `main.py` yet, and no phenology-aware modeling, ML, or cloud/GPU work has started.
 
-Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for full detail): review stability of the combined feature table before wiring it into `main.py`, then a FAO-56 soil-water balance model, phenology-aware risk logic, and advanced modeling (Monte Carlo, Bayesian calibration, ML-based forecasting) — with cloud deployment and IndiaAI Compute as later-stage options only if a genuine deployment/GPU/scale need arises.
+Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for full detail): review stability of the combined feature table and FAO-56 output before wiring either into `main.py`, then phenology-aware crop coefficients/risk logic, and advanced modeling (Monte Carlo, Bayesian calibration, ML-based forecasting) — with cloud deployment and IndiaAI Compute as later-stage options only if a genuine deployment/GPU/scale need arises.
 
 ---
 
@@ -457,8 +462,9 @@ Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for
 
 Planned future upgrades:
 
-- Wire the combined weather/soil/vegetation feature table into `main.py` (only after its stability is reviewed)
-- Add FAO-56 soil-water balance model
+- Wire the combined weather/soil/vegetation feature table and the FAO-56 water balance script into `main.py` (only after their stability is reviewed)
+- Replace the current constant crop coefficient (Kc = 0.75) in the FAO-56 model with phenology-aware, growth-stage-specific Kc values
+- Add irrigation-event, runoff, and deep-percolation tracking to the water balance (currently rainfed-only depletion)
 - Add phenology-aware mango risk modeling
 - Add Ensemble Kalman Filter state estimation
 - Add Monte Carlo uncertainty simulation

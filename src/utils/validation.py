@@ -95,6 +95,33 @@ REQUIRED_COMBINED_FEATURE_COLUMNS = [
 ]
 
 
+REQUIRED_FAO56_INPUT_COLUMNS = [
+    "date",
+    "temperature_avg_c",
+    "temperature_max_c",
+    "temperature_min_c",
+    "relative_humidity_percent",
+    "rainfall_mm",
+    "solar_radiation_mj_m2",
+    "wind_speed_m_s",
+    "sand_percent",
+    "clay_percent",
+    "organic_carbon_g_kg",
+]
+
+REQUIRED_FAO56_OUTPUT_COLUMNS = [
+    "date",
+    "et0_mm",
+    "etc_mm",
+    "rainfall_mm",
+    "root_zone_depletion_mm",
+    "taw_mm",
+    "raw_mm",
+    "water_stress_coefficient_ks",
+    "water_stress_level",
+]
+
+
 class MissingColumnsError(ValueError):
     """Raised when a DataFrame is missing one or more required columns."""
 
@@ -143,3 +170,13 @@ def validate_vegetation_data(df: pd.DataFrame) -> None:
 def validate_combined_feature_data(df: pd.DataFrame) -> None:
     """Validate the combined weather + soil + vegetation feature table."""
     validate_columns(df, REQUIRED_COMBINED_FEATURE_COLUMNS, "Combined weather/soil/vegetation feature table")
+
+
+def validate_fao56_input(df: pd.DataFrame) -> None:
+    """Validate that a DataFrame has what the FAO-56 water balance script needs."""
+    validate_columns(df, REQUIRED_FAO56_INPUT_COLUMNS, "FAO-56 water balance input data")
+
+
+def validate_fao56_output(df: pd.DataFrame) -> None:
+    """Validate the FAO-56 daily soil-water balance output table."""
+    validate_columns(df, REQUIRED_FAO56_OUTPUT_COLUMNS, "FAO-56 soil-water balance output data")

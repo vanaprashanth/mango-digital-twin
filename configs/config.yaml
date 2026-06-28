@@ -46,6 +46,36 @@ remote_sensing:
   cloud_threshold_percent: 20  # skip Sentinel-2 scenes with more cloud cover
                                  # than this (CLOUDY_PIXEL_PERCENTAGE)
 
+# FAO-56 soil-water balance settings (standalone prep phase — see
+# src/water_balance/fao56_water_balance.py). Used to compute reference
+# evapotranspiration (ET0) and a daily root-zone soil-water balance. Not
+# wired into main.py or the dashboard yet; this section only documents the
+# assumptions the standalone script reads.
+fao56:
+  elevation_m: 150  # Approximate elevation for the Chittoor district plains
+                      # around Muthukur/Peddapanjani. This is a documented
+                      # assumption, not a surveyed value for the exact
+                      # coordinates above — refine if precise DEM/elevation
+                      # data becomes available. Used only for atmospheric
+                      # pressure in the ET0 psychrometric constant, which is
+                      # not very sensitive to small elevation errors.
+  root_depth_m: 1.2   # Effective root zone depth for a mature mango tree.
+                        # FAO-56 Table 22 lists mango at 1.2-2.0 m; using the
+                        # conservative low end until a phenology-aware
+                        # (planting age / canopy size) model exists.
+  depletion_fraction_p: 0.50  # Default soil-water depletion fraction at
+                                # which water stress begins (FAO-56 Table 22
+                                # typical value for fruit trees, ~0.50).
+  kc_constant: 0.75  # Placeholder, NON-phenology-aware crop coefficient for
+                       # a mature mango orchard, used for every day in the
+                       # date range. Real Kc varies by growth stage
+                       # (flowering, fruit set, fruit development, maturity,
+                       # post-harvest) — see ROADMAP.md Phase 5. Until that
+                       # phenology model exists, this constant is a
+                       # documented simplification, not a precise value.
+  albedo: 0.23  # FAO-56 reference crop albedo (Chapter 4), used in the net
+                  # shortwave radiation term of the ET0 equation.
+
 paths:
   data_raw_dir: "data/raw"
   data_processed_dir: "data/processed"
@@ -57,6 +87,7 @@ paths:
   sentinel2_daily_csv: "data/processed/muthukur_sentinel2_daily_indices.csv"
   sentinel2_timeseries_csv: "data/processed/muthukur_sentinel2_index_timeseries.csv"
   combined_feature_table_csv: "data/processed/muthukur_combined_feature_table.csv"
+  fao56_water_balance_csv: "data/processed/muthukur_fao56_water_balance.csv"
 
 risk_thresholds:
   classification:

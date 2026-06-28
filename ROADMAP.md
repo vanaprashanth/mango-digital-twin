@@ -67,8 +67,9 @@ Scope:
 5. Data source / status badges — done
 6. Move raw data into expandable sections — done
 7. Sentinel-2 / Google Earth Engine — done ahead of schedule, see Phase 3 below (still local-only, not cloud-deployed)
-8. FAO-56 water balance — next scientific modeling step, see Phase 4 below
-9. Prepare cloud migration once the local dashboard and pipelines are clean
+8. FAO-56 water balance — done ahead of schedule, see Phase 4 below (standalone, simplified rainfed prototype)
+9. Phenology-aware crop coefficients and growth-stage logic — next scientific modeling step, see Phase 5 below
+10. Prepare cloud migration once the local dashboard and pipelines are clean
 
 ---
 
@@ -118,28 +119,40 @@ in one respect: the combined feature table itself is not yet wired into
 
 ---
 
-## Phase 4 — Scientific Water-Stress Modeling
+## Phase 4 — Scientific Water-Stress Modeling — COMPLETED (local PC, standalone prototype)
 
-After vegetation features exist.
+Done so far, ahead of the original cloud-first sequencing — fully local,
+no cloud deployment, no raster downloads:
 
-Add:
+1. [DONE] FAO-56 Penman-Monteith style soil-water balance (`src/water_balance/fao56_water_balance.py`)
+2. [DONE] ET0 calculated via the FAO-56 Penman-Monteith equation from weather variables
+3. [DONE] Rainfall input from the combined feature table
+4. [DONE] Soil water-holding capacity (TAW/RAW) from Saxton-Rawls field-capacity/wilting-point estimates using SoilGrids texture
+5. [DONE] Constant crop coefficient assumption for mango (Kc = 0.75 — not yet phenology-aware)
+6. [DONE] Root-zone depletion balance and Ks water-stress coefficient (functions as the daily water-stress score)
+7. [DONE] Water Balance dashboard page showing ET0, ETc, depletion, Ks, TAW, RAW, trends, and interpretation
 
-1. FAO-56 style soil-water balance
-2. ET0 from Open-Meteo or calculated weather variables
-3. Rainfall input
-4. Soil water-holding capacity from SoilGrids
-5. Crop coefficient assumptions for mango
-6. Water deficit index
-7. Daily water stress score
+Not yet done from the original Phase 4 scope, carried forward explicitly as
+known limitations of this prototype:
 
-Goal: replace the simple irrigation rules with a physics-informed irrigation
-stress model.
+- Crop coefficient is a constant (0.75), not phenology-aware by growth stage
+- Depletion balance is rainfed-only — no actual irrigation events are modeled
+- No runoff or deep-percolation tracking (all rainfall above field capacity is currently treated as lost from the root zone, with no separate runoff/percolation accounting)
+- No field/yield validation against real orchard outcomes yet
+- Not wired into `main.py` — still a standalone script, read directly by the dashboard only
+
+Goal achieved (in simplified prototype form): the FAO-56 model and Water
+Balance page give the first physics-informed water-stress signal in the
+project, replacing nothing yet — the original simple irrigation rules still
+run unchanged, and the FAO-56 output is a separate, parallel view pending
+the limitations above being addressed.
 
 ---
 
 ## Phase 5 — Phenology-Aware Mango Digital Twin
 
-Add mango growth-stage logic:
+Replace the FAO-56 prototype's constant crop coefficient (Kc = 0.75) with
+growth-stage-specific Kc values, and add mango growth-stage logic generally:
 
 1. Dormancy / rest period
 2. Flowering

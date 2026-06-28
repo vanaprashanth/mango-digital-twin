@@ -46,11 +46,15 @@ relevant section shows a friendly warning instead of crashing — you don't
 need to run the full pipeline first to explore the dashboard. This includes
 the **Vegetation Health** page, which shows Sentinel-2 NDVI/NDWI/NDMI/NDRE
 trends if `data/processed/muthukur_sentinel2_daily_indices.csv` exists (see
-step 7.8), and the **Combined Intelligence** page, which shows the combined
+step 7.8), the **Combined Intelligence** page, which shows the combined
 weather + soil + vegetation view if
-`data/processed/muthukur_combined_feature_table.csv` exists (see step 7.9) —
-each page shows a friendly warning with the exact command to run if its
-own file doesn't exist yet.
+`data/processed/muthukur_combined_feature_table.csv` exists (see step 7.9),
+and the **Water Balance** page, which shows the FAO-56 soil-water balance
+output if `data/processed/muthukur_fao56_water_balance.csv` exists (see
+step 7.11) — each page shows a friendly warning with the exact command to
+run if its own file doesn't exist yet. Note that `main.py` does **not**
+currently run the FAO-56 script (or the combined-feature-table script) —
+both must be run manually before their dashboard pages will show data.
 
 ## 5. Run the tests
 
@@ -267,7 +271,46 @@ rules (possible water stress, disease-friendly conditions, combined stress,
 stale-data warning), and an expandable raw table. It is read-only and does
 not change `main.py` or any other dashboard page.
 
-### 7.11 What's configured so far
+### 7.11 Build the FAO-56 soil-water balance (standalone, small CSV only)
+
+Once the combined feature table exists, you can compute a daily FAO-56
+Penman-Monteith soil-water balance — still standalone, no Earth Engine
+connection needed:
+
+```bash
+python src/water_balance/fao56_water_balance.py
+```
+
+Input: `data/processed/muthukur_combined_feature_table.csv`
+
+Output: `data/processed/muthukur_fao56_water_balance.csv`
+
+For each date, this computes reference evapotranspiration (ET0) via the
+FAO-56 Penman-Monteith equation, estimated crop water use (ETc = ET0 × Kc,
+with Kc currently held constant at 0.75), total/readily available water
+(TAW/RAW) from Saxton-Rawls field-capacity and wilting-point estimates
+based on SoilGrids texture, a root-zone depletion balance driven by
+rainfall and ETc, the Ks water-stress coefficient, and a Low/Medium/High
+water-stress level. It logs TAW/RAW and a water-stress-day breakdown. The
+resulting CSV is shown on the dashboard's **Water Balance** page (see
+below). **This is a simplified rainfed prototype**: Kc is constant (not
+phenology-aware), there are no modeled irrigation events, and there is no
+separate runoff/deep-percolation accounting — the script itself is still
+standalone, **not wired into `main.py` yet**.
+
+### 7.12 Water Balance dashboard page
+
+Once the FAO-56 CSV exists, the dashboard's **Water Balance** sidebar page
+shows it directly — no extra command needed beyond step 4 above
+(`streamlit run app/streamlit_app.py`). The page includes a disclaimer that
+this is a simplified rainfed prototype, latest-status metrics (date, ET0,
+ETc, root-zone depletion, Ks, water-stress level, TAW, RAW), ET0+ETc and
+rainfall+ETc charts, a depletion chart with RAW/TAW reference lines, a Ks
+trend chart, a water-stress-level count chart, interpretation notes for
+each term, and an expandable raw table. It is read-only and does not
+change `main.py` or any other dashboard page.
+
+### 7.13 What's configured so far
 
 `configs/config.yaml` now has a `remote_sensing` section with the study
 area's latitude/longitude, an optional buffer radius (meters) for defining
@@ -323,3 +366,13 @@ a later phase.
   **Combined Intelligence** page (step 7.10), the first page that interprets
   weather risk, soil conditions, and vegetation health together. This is
   still prep work for FAO-56 modeling and (much later) ML.
+- `src/water_balance/fao56_water_balance.py` (step 7.11) — computes a daily
+  FAO-56 Penman-Monteith soil-water balance (ET0, ETc, TAW, RAW, root-zone
+  depletion, Ks water-stress coefficient) from the combined feature table,
+  writing `data/processed/muthukur_fao56_water_balance.csv`. Shown on the
+  dashboard's **Water Balance** page (step 7.12) — the first
+  physics-informed water-stress view in the project. Standalone — **not
+  wired into `main.py` yet**. Known limitations of this prototype: a
+  constant crop coefficient (Kc = 0.75, not phenology-aware), rainfed-only
+  depletion (no modeled irrigation events), no runoff/deep-percolation
+  accounting, and no field validation.
