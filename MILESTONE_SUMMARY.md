@@ -32,7 +32,7 @@ same codebase could point at a different orchard by editing that one file.
 
 ## Current Dashboard Pages
 
-The Streamlit dashboard (`streamlit run app/streamlit_app.py`) has nine
+The Streamlit dashboard (`streamlit run app/streamlit_app.py`) has eleven
 pages, navigated from the sidebar:
 
 1. **Overview & Map** — latest digital twin status, study-area map, latest
@@ -52,9 +52,15 @@ pages, navigated from the sidebar:
    root-zone depletion, Ks water-stress coefficient, TAW, RAW), with
    trend charts and interpretation notes. Carries an explicit disclaimer
    that this is a simplified rainfed prototype (see below).
-8. **What-if Simulator** — sliders to test rainfall/temperature/humidity
+8. **Mango Phenology** — current growth stage, stage descriptions and
+   sensitivities, stage counts and timeline, monthly stage distribution.
+9. **Phenology Water Balance** — the phenology-aware FAO-56 output, with
+   Kc/ET0/ETc/depletion/Ks trends, stage-wise breakdowns, and a labeled
+   prototype comparison against the constant-Kc Water Balance page (see
+   below).
+10. **What-if Simulator** — sliders to test rainfall/temperature/humidity
    changes and see the simulated risk impact.
-9. **Raw Data** — expandable raw/processed tables for every data source.
+11. **Raw Data** — expandable raw/processed tables for every data source.
 
 ## Current Generated Data Files
 
@@ -190,16 +196,44 @@ The original constant-Kc FAO-56 script and CSV are untouched.
   - No irrigation events yet (still rainfed-only depletion, same as the
     constant-Kc script).
   - No field validation yet.
-  - Not yet integrated into the dashboard or `main.py` — this script is
-    standalone only and currently has no dashboard page of its own.
+  - Not yet integrated into `main.py` — this script is standalone with
+    respect to the pipeline (it must be run manually).
+
+---
+
+## Phenology-Aware Water Balance Dashboard Milestone (new)
+
+The phenology-aware FAO-56 output above is now visible in the Streamlit
+dashboard, on a new **Phenology Water Balance** sidebar page, mirroring the
+existing constant-Kc **Water Balance** page.
+
+- **What it shows:** latest mango stage, Kc, ET0, ETc, root-zone
+  depletion, Ks, and water-stress level; trend charts for Kc, ET0/ETc,
+  depletion, and Ks; water-stress-level counts; stage-wise water-stress and
+  ETc breakdowns; and an expandable raw data table.
+- **Input CSV:** `data/processed/muthukur_fao56_phenology_water_balance.csv`
+  (produced by `src/water_balance/fao56_phenology_water_balance.py`).
+- **Output / dashboard page:** the **Phenology Water Balance** page in
+  `app/streamlit_app.py`, sitting between the **Mango Phenology** and
+  **What-if Simulator** pages in the sidebar. Where the original constant-Kc
+  output (`data/processed/muthukur_fao56_water_balance.csv`) also exists,
+  the page includes a labeled prototype comparison of ETc and water-stress
+  counts between the two Kc approaches.
+- **Limitations:**
+  - Kc values are assumed, not cultivar-specific, and not field-calibrated.
+  - Irrigation events are not yet included (rainfed-only depletion).
+  - Not integrated into `main.py` — the underlying script must still be run
+    manually before this page shows data.
+  - The constant-Kc-vs-phenology-aware comparison is a prototype
+    illustration only, not a validated model comparison.
+
+The original constant-Kc Water Balance page and its underlying script/CSV
+are unchanged by this addition.
 
 ---
 
 ## What Has Not Been Done Yet
 
-- No dashboard page for the phenology-aware FAO-56 output yet (the
-  constant-Kc version has a Water Balance page; the phenology-aware version
-  does not yet).
 - No local/cultivar-specific calibration of the phenology-aware Kc values —
   they are first-pass assumptions from general guidance.
 - No irrigation-event modeling in either water balance (rainfed-only
@@ -213,38 +247,4 @@ The original constant-Kc FAO-56 script and CSV are untouched.
 - No raster export/download workflow yet (only scalar index values are
   computed; no satellite images are saved).
 - No field/yield validation yet (risk scores and both FAO-56 outputs have
-  not been checked against real orchard outcomes).
-- The combined feature table and both FAO-56 water balance scripts are not
-  yet wired into `main.py` — all are still standalone scripts.
-
-## Recommended Next Steps
-
-1. **Documentation checkpoint** — this milestone summary, plus the updated
-   `README.md`, `ROADMAP.md`, and `DEVELOPMENT.md`, freeze a clear record of
-   the phenology-aware FAO-56 standalone milestone before dashboard
-   visualization work begins.
-2. **Optional Git commit** — commit this stable state as a checkpoint that
-   can be returned to if later changes need to be rolled back.
-3. **Add a dashboard page for the phenology-aware FAO-56 output** —
-   mirroring the existing Water Balance page, once ready.
-4. **Add the combined table and both FAO-56 scripts to the main pipeline
-   only after reviewing their stability** — once confident in their
-   behavior over more data, consider wiring them into `main.py` so they run
-   automatically.
-5. **Calibrate the phenology-aware Kc values** against local or
-   cultivar-specific data as it becomes available.
-6. **Add irrigation-event, runoff, and deep-percolation tracking** to the
-   water balance, moving it past a rainfed-only prototype.
-7. **Later, prepare cloud deployment** — once the local system and
-   phenology work are stable, move storage, scheduling, and the dashboard
-   to the cloud (GCP, as planned in `ROADMAP.md`).
-8. **Later, explore IndiaAI only if GPU-heavy work is needed** — for example,
-   if a future ML or deep-learning model genuinely requires GPU compute at
-   scale.
-
----
-
-This project is a research and prototype system. The risk scores and
-vegetation interpretations are not final agronomic recommendations. Field
-validation, expert calibration, and local farmer observations are still
-required before any operational use.
+  not been checked against real orchard outco

@@ -68,7 +68,7 @@ Scope:
 6. Move raw data into expandable sections — done
 7. Sentinel-2 / Google Earth Engine — done ahead of schedule, see Phase 3 below (still local-only, not cloud-deployed)
 8. FAO-56 water balance — done ahead of schedule, see Phase 4 below (standalone, simplified rainfed prototype)
-9. Phenology-aware crop coefficients and growth-stage logic — next scientific modeling step, see Phase 5 below
+9. Phenology-aware crop coefficients and growth-stage logic — done, including dashboard visualization, see Phase 5 below
 10. Prepare cloud migration once the local dashboard and pipelines are clean
 
 ---
@@ -182,6 +182,11 @@ downloads):
    reusing the same ET0/TAW/RAW/depletion logic as the original FAO-56
    script. Output: `data/processed/muthukur_fao56_phenology_water_balance.csv`.
    The original constant-Kc FAO-56 script and CSV are untouched.
+3. [DONE] Phenology-aware FAO-56 dashboard page (**Phenology Water
+   Balance**) — visualizes the stage-aware Kc, ET0, ETc, root-zone
+   depletion, Ks, and water-stress level over time, with stage-wise
+   breakdowns and a labeled prototype comparison against the constant-Kc
+   Water Balance page where that output exists.
 
 Kc values used (first-pass assumptions, not field-calibrated):
 
@@ -196,8 +201,6 @@ Kc values used (first-pass assumptions, not field-calibrated):
 
 Not yet done from Phase 5 scope (kept as future work, not started):
 
-- Dashboard integration of the phenology-aware FAO-56 output (still
-  standalone only — no dashboard page yet for this script)
 - Wiring either phenology script into `main.py`
 - Local/cultivar-specific Kc calibration (current values are generic
   FAO-56/mango guidance, not measured at this orchard)
@@ -253,6 +256,4 @@ Possible proposal framing:
 
 ## Sequencing Rule
 
-PC (engineering, dashboards, pipelines, small experiments) → GCP (storage,
-scheduling, deployment, Earth Engine) → IndiaAI Compute (only once a genuine
-GPU/scale need exists). No phase is skipped ahead of its prerequisite.
+PC (engineering, dash
