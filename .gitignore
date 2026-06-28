@@ -1,0 +1,19 @@
+# Virtual environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Logs (regenerated automatically on every pipeline run)
+logs/
+
+# Earth Engine / credential files, if ever present locally
+*.json
+!configs/*.json
+
+# OS/editor clutter
+.DS_Store
+.vscode/

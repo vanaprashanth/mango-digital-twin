@@ -1,0 +1,16 @@
+pandas
+numpy
+requests
+python-dotenv
+streamlit
+plotly
+scikit-learn
+geopandas
+shapely
+pyyaml
+pytest
+
+# Sentinel-2 / Google Earth Engine (setup phase only — see DEVELOPMENT.md
+# "Google Earth Engine setup" section). Installing this does NOT authenticate
+# you automatically; you still need to run `earthengine authenticate` once.
+earthengine-api

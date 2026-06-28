@@ -1,0 +1,88 @@
+# Sensor-Free Mango Digital Twin — project configuration
+# All coordinates, dates, file paths, and risk thresholds live here so
+# nothing is hardcoded inside the pipeline scripts.
+
+study_area:
+  name: "Muthukur / Peddapanjani mango-growing area"
+  district: "Chittoor"
+  state: "Andhra Pradesh"
+  country: "India"
+  latitude: 13.294219
+  longitude: 78.624294
+
+historical_weather:
+  source: "NASA POWER"
+  start_date: "2025-01-01"   # YYYY-MM-DD, converted to YYYYMMDD internally
+  end_date: null              # null = today
+  parameters: ["T2M", "T2M_MAX", "T2M_MIN", "RH2M", "PRECTOTCORR", "ALLSKY_SFC_SW_DWN", "WS2M"]
+
+forecast_weather:
+  source: "Open-Meteo"
+  past_days: 7
+  forecast_days: 7
+  timezone: "Asia/Kolkata"
+
+soil:
+  source: "SoilGrids"
+  properties: ["sand", "silt", "clay", "phh2o", "soc", "bdod", "cec"]
+  depths: ["0-5cm", "5-15cm", "15-30cm"]
+
+# Sentinel-2 / Google Earth Engine settings.
+# SETUP ONLY at this stage — these values describe the area of interest and
+# imagery filters that will be used once remote-sensing fetching is built.
+# No satellite data is downloaded yet just by having this section present.
+remote_sensing:
+  gee_project_id: "mango-digital-twin"  # Google Cloud project tied to your
+                                          # Earth Engine account (created during
+                                          # `earthengine authenticate`). Required
+                                          # by ee.Initialize() as of mid-2024+.
+  latitude: 13.294219     # defaults to the same point as study_area
+  longitude: 78.624294
+  buffer_radius_m: 500    # optional buffer around the point, in meters, to
+                            # define a small area of interest instead of a
+                            # single pixel
+  start_date: "2025-01-01"   # YYYY-MM-DD, Sentinel-2 imagery search window start
+  end_date: null              # null = today
+  cloud_threshold_percent: 20  # skip Sentinel-2 scenes with more cloud cover
+                                 # than this (CLOUDY_PIXEL_PERCENTAGE)
+
+paths:
+  data_raw_dir: "data/raw"
+  data_processed_dir: "data/processed"
+  nasa_power_csv: "data/raw/muthukur_weather_nasa_power.csv"
+  open_meteo_csv: "data/raw/muthukur_weather_open_meteo.csv"
+  soilgrids_csv: "data/raw/muthukur_soilgrids.csv"
+  historical_risk_csv: "data/processed/muthukur_weather_risk_scores.csv"
+  forecast_risk_csv: "data/processed/muthukur_open_meteo_forecast_risk.csv"
+  sentinel2_daily_csv: "data/processed/muthukur_sentinel2_daily_indices.csv"
+  sentinel2_timeseries_csv: "data/processed/muthukur_sentinel2_index_timeseries.csv"
+  combined_feature_table_csv: "data/processed/muthukur_combined_feature_table.csv"
+
+risk_thresholds:
+  classification:
+    high: 0.70
+    medium: 0.40
+  irrigation:
+    rainfall_7day_low_mm: 10
+    rainfall_7day_medium_mm: 25
+    temp_max_high_c: 35
+    temp_max_medium_c: 32
+    solar_radiation_high_mj_m2: 22
+    solar_radiation_medium_mj_m2: 18
+    et0_high_mm: 6
+    et0_medium_mm: 4.5
+  heat_stress:
+    temp_max_extreme_c: 40
+    temp_max_high_c: 37
+    temp_max_medium_c: 35
+    temp_max_low_c: 32
+    temp_avg_warm_c: 30
+  disease:
+    humidity_high_percent: 85
+    humidity_medium_percent: 75
+    humidity_low_percent: 65
+    temp_avg_favorable_min_c: 24
+    temp_avg_favorable_max_c: 30
+    temp_avg_marginal_min_c: 20
+    rainfall_3day_high_mm: 20
+    rainfall_3day_medium_mm: 5
