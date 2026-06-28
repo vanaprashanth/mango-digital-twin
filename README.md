@@ -199,7 +199,7 @@ mango-digital-twin/
 Notes on the structure:
 
 - `src/utils/config.py` loads `configs/config.yaml` once and exposes it through `get_config()`. Every script (fetch, risk engine, dashboard) calls this instead of hardcoding coordinates, dates, file paths, or thresholds.
-- `src/risk/historical_risk_engine.py` is the real historical risk engine. The old `src/risk/risk_engine.py` has been removed — it had been accidentally overwritten with a duplicate of the dashboard code and was not actually computing risk scores.
+- `src/risk/historical_risk_engine.py` is the real historical risk engine. The old `src/risk/risk_engine.py` has been removed it had been accidentally overwritten with a duplicate of the dashboard code and was not actually computing risk scores.
 - `src/pipeline/run_pipeline.py` (invoked via `main.py`) runs the full ingestion-to-risk pipeline in the correct order, or just the risk-scoring steps with `--skip-fetch`.
 
 ---
@@ -476,7 +476,7 @@ Completed:
 - What-if simulator
 - Scenario explanation
 - Advisory output
-- Centralized configuration (`configs/config.yaml` + `src/utils/config.py`) — no hardcoded coordinates, dates, paths, or thresholds
+- Centralized configuration (`configs/config.yaml` + `src/utils/config.py`) no hardcoded coordinates, dates, paths, or thresholds
 - Single pipeline runner (`main.py` / `src/pipeline/run_pipeline.py`) with a `--skip-fetch` mode for offline risk recomputation
 - NASA POWER `-999` missing-value cleaning in the historical risk engine
 - Google Earth Engine setup and authentication check (`src/remote_sensing/gee_setup.py`)
@@ -486,15 +486,15 @@ Completed:
 - Daily Sentinel-2 aggregation with greenness/moisture/canopy-stress labels
 - Vegetation Health dashboard page (first remote-sensing data visible in the dashboard)
 - Combined weather + soil + vegetation feature table (`src/features/build_feature_table.py`), using nearest-previous (never future) Sentinel-2 matching and a data-freshness flag
-- Combined Intelligence dashboard page — the first true digital-twin view interpreting weather risk, soil conditions, and vegetation health together
+- Combined Intelligence dashboard page the first true digital-twin view interpreting weather risk, soil conditions, and vegetation health together
 - Standalone FAO-56 Penman-Monteith soil-water balance script (`src/water_balance/fao56_water_balance.py`), computing ET0, ETc, root-zone depletion, the Ks water-stress coefficient, TAW, and RAW
-- Water Balance dashboard page — the first physics-informed water-stress view in the project, with a clear disclaimer that it is a simplified rainfed prototype (constant Kc, no irrigation events, no runoff/deep percolation tracking, no field validation yet)
-- Mango phenology calendar (`src/phenology/mango_phenology_calendar.py`) — a regional, generic growth-stage calendar assigning one mango stage per date
-- Phenology-aware FAO-56 standalone script (`src/water_balance/fao56_phenology_water_balance.py`) — joins the combined feature table with the phenology calendar and assigns Kc by growth stage instead of a constant value, reusing the same ET0/TAW/RAW/depletion logic as the original FAO-56 script
+- Water Balance dashboard page the first physics-informed water-stress view in the project, with a clear disclaimer that it is a simplified rainfed prototype (constant Kc, no irrigation events, no runoff/deep percolation tracking, no field validation yet)
+- Mango phenology calendar (`src/phenology/mango_phenology_calendar.py`) a regional, generic growth-stage calendar assigning one mango stage per date
+- Phenology-aware FAO-56 standalone script (`src/water_balance/fao56_phenology_water_balance.py`) joins the combined feature table with the phenology calendar and assigns Kc by growth stage instead of a constant value, reusing the same ET0/TAW/RAW/depletion logic as the original FAO-56 script
 
-Note: the combined feature table, Combined Intelligence page, both FAO-56 scripts, and the Water Balance page are all standalone so far — none of them are wired into `main.py` yet. The phenology-aware FAO-56 script in particular has no dashboard page yet, and no ML or cloud/GPU work has started.
+Note: the combined feature table, Combined Intelligence page, both FAO-56 scripts, and the Water Balance page are all standalone so far none of them are wired into `main.py` yet. The phenology-aware FAO-56 script in particular has no dashboard page yet, and no ML or cloud/GPU work has started.
 
-Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for full detail): review stability of the combined feature table and FAO-56 output before wiring either into `main.py`, then phenology-aware crop coefficients/risk logic, and advanced modeling (Monte Carlo, Bayesian calibration, ML-based forecasting) — with cloud deployment and IndiaAI Compute as later-stage options only if a genuine deployment/GPU/scale need arises.
+Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for full detail): review stability of the combined feature table and FAO-56 output before wiring either into `main.py`, then phenology-aware crop coefficients/risk logic, and advanced modeling (Monte Carlo, Bayesian calibration, ML-based forecasting) with cloud deployment and IndiaAI Compute as later-stage options only if a genuine deployment/GPU/scale need arises.
 
 ---
 
@@ -506,7 +506,7 @@ Planned future upgrades:
 - Add a dashboard page for the phenology-aware FAO-56 output (currently standalone only)
 - Calibrate the phenology-aware Kc stage values against local/cultivar-specific data (current values are first-pass assumptions)
 - Add irrigation-event, runoff, and deep-percolation tracking to the water balance (currently rainfed-only depletion)
-- Add phenology-aware mango risk modeling (beyond Kc — heat/disease/forecast risk by growth stage)
+- Add phenology-aware mango risk modeling (beyond Kc heat/disease/forecast risk by growth stage)
 - Add Ensemble Kalman Filter state estimation
 - Add Monte Carlo uncertainty simulation
 - Add GCP deployment
