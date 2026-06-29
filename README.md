@@ -243,13 +243,17 @@ pip install -r requirements.txt
 python main.py
 ```
 
-This runs every step in the correct order: NASA POWER fetch → SoilGrids fetch → historical risk engine → Open-Meteo fetch → forecast risk engine.
+This runs every step in the correct order: NASA POWER fetch → SoilGrids fetch → historical risk engine → Open-Meteo fetch → forecast risk engine → phenology-aware FAO-56 water balance (optional step, see below).
 
 If you only want to recompute risk scores from already-downloaded raw data (no network calls), use:
 
 ```bash
 python main.py --skip-fetch
 ```
+
+`main.py` itself is just a thin entry point — both commands above delegate to `src/pipeline/run_pipeline.py`, which defines the actual step list.
+
+Both commands also run an additional, optional pipeline step: the phenology-aware FAO-56 water balance. If its two required inputs already exist (`data/processed/muthukur_combined_feature_table.csv` and `data/processed/muthukur_mango_phenology_calendar.csv`), this step regenerates `data/processed/muthukur_fao56_phenology_water_balance.csv` by calling the existing standalone script's function (see section 10 below) — no FAO-56 or Kc logic is duplicated in the pipeline. If either input is missing, the step prints a clear message and skips itself without stopping the rest of the pipeline. The original constant-Kc FAO-56 output (`data/processed/muthukur_fao56_water_balance.csv`) is unaffected by this step and remains available exactly as before.
 
 Then launch the dashboard:
 
@@ -411,13 +415,21 @@ Stage-aware Kc values used (first-pass assumptions, not field-calibrated):
 | Rest / vegetative phase | 0.60 |
 
 The original constant-Kc FAO-56 script and its output CSV are untouched —
-this is a separate, parallel script and output file. This script's output
-is now visible on the dashboard's **Phenology Water Balance** page (see
-section 11 below). **This model is still standalone in the pipeline sense:
-it is not yet wired into `main.py`.** It remains a prototype — Kc values
-are assumed, not cultivar-specific, not field-calibrated, and irrigation
-events are not yet included. See `ROADMAP.md` and `MILESTONE_SUMMARY.md`
-for limitations and next steps.
+this is a separate, parallel script and output file, and it still remains
+available on its own (run it directly, or via `python main.py`, see
+section 8 below). This script's output is now visible on the dashboard's
+**Phenology Water Balance** page (see section 11 below). **This model is
+now wired into the main pipeline:** `python main.py --skip-fetch` (and the
+full `python main.py` run) regenerates
+`data/processed/muthukur_fao56_phenology_water_balance.csv` automatically,
+via a step in `src/pipeline/run_pipeline.py` that calls this script's
+existing `build_fao56_phenology_water_balance()` function directly — no
+FAO-56 or Kc math is duplicated in the pipeline runner. The standalone
+command (`python src/water_balance/fao56_phenology_water_balance.py`)
+still works exactly as before. It remains a prototype — Kc values are
+assumed, not cultivar-specific, not field-calibrated, and irrigation events
+are not yet included. See `ROADMAP.md` and `MILESTONE_SUMMARY.md` for
+limitations and next steps.
 
 ---
 
@@ -498,8 +510,9 @@ Completed:
 - Mango phenology calendar (`src/phenology/mango_phenology_calendar.py`) a regional, generic growth-stage calendar assigning one mango stage per date
 - Phenology-aware FAO-56 standalone script (`src/water_balance/fao56_phenology_water_balance.py`) joins the combined feature table with the phenology calendar and assigns Kc by growth stage instead of a constant value, reusing the same ET0/TAW/RAW/depletion logic as the original FAO-56 script
 - Phenology Water Balance dashboard page visualizes the phenology-aware FAO-56 output, with a labeled prototype comparison against the constant-Kc Water Balance page
+- Phenology-aware FAO-56 water balance wired into the main pipeline (`src/pipeline/run_pipeline.py`): `python main.py --skip-fetch` (and full `python main.py`) now regenerates `data/processed/muthukur_fao56_phenology_water_balance.csv` automatically, by calling the existing standalone script's function directly — no math duplicated, `main.py` itself unchanged
 
-Note: the combined feature table and both FAO-56 scripts are all standalone so far none of them are wired into `main.py` yet. No ML or cloud/GPU work has started.
+Note: the combined feature table, the constant-Kc FAO-56 script, and the mango phenology calendar script are still standalone — only the phenology-aware FAO-56 water balance is wired into `main.py` so far. No ML or cloud/GPU work has started.
 
 Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for full detail): review stability of the combined feature table and FAO-56 output before wiring either into `main.py`, then phenology-aware crop coefficients/risk logic, and advanced modeling (Monte Carlo, Bayesian calibration, ML-based forecasting) with cloud deployment and IndiaAI Compute as later-stage options only if a genuine deployment/GPU/scale need arises.
 
@@ -509,7 +522,7 @@ Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for
 
 Planned future upgrades:
 
-- Wire the combined weather/soil/vegetation feature table and both FAO-56 water balance scripts into `main.py` (only after their stability is reviewed)
+- Wire the combined weather/soil/vegetation feature table, the mango phenology calendar, and the constant-Kc FAO-56 water balance script into `main.py` (the phenology-aware FAO-56 water balance is now wired in; only after stability is reviewed for the rest)
 - Calibrate the phenology-aware Kc stage values against local/cultivar-specific data (current values are first-pass assumptions)
 - Add irrigation-event, runoff, and deep-percolation tracking to the water balance (currently rainfed-only depletion)
 - Add phenology-aware mango risk modeling (beyond Kc heat/disease/forecast risk by growth stage)

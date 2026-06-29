@@ -187,6 +187,17 @@ downloads):
    depletion, Ks, and water-stress level over time, with stage-wise
    breakdowns and a labeled prototype comparison against the constant-Kc
    Water Balance page where that output exists.
+4. [DONE] Pipeline integration for the phenology-aware FAO-56 water
+   balance — `src/pipeline/run_pipeline.py` now includes an optional step
+   that calls the existing `build_fao56_phenology_water_balance()`
+   function directly (no FAO-56/Kc math duplicated), so
+   `python main.py --skip-fetch` (and full `python main.py`) automatically
+   regenerates `data/processed/muthukur_fao56_phenology_water_balance.csv`
+   whenever its two inputs (the combined feature table and the mango
+   phenology calendar) already exist. `main.py` itself was not modified —
+   it still only delegates to `run_pipeline.py`. If either required input
+   is missing, the step prints a clear message and skips itself without
+   stopping the rest of the pipeline.
 
 Kc values used (first-pass assumptions, not field-calibrated):
 
@@ -201,7 +212,9 @@ Kc values used (first-pass assumptions, not field-calibrated):
 
 Not yet done from Phase 5 scope (kept as future work, not started):
 
-- Wiring either phenology script into `main.py`
+- Wiring the mango phenology calendar script itself into `main.py`
+  (the phenology-aware FAO-56 water balance step is now wired in; see
+  item 4 above)
 - Local/cultivar-specific Kc calibration (current values are generic
   FAO-56/mango guidance, not measured at this orchard)
 - Irrigation-event modeling (still rainfed-only depletion)

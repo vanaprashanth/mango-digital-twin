@@ -196,8 +196,9 @@ The original constant-Kc FAO-56 script and CSV are untouched.
   - No irrigation events yet (still rainfed-only depletion, same as the
     constant-Kc script).
   - No field validation yet.
-  - Not yet integrated into `main.py` — this script is standalone with
-    respect to the pipeline (it must be run manually).
+  - Integrated into `main.py` as of the pipeline-integration milestone
+    below — it no longer needs to be run manually as long as its two
+    inputs already exist. It can still also be run standalone on its own.
 
 ---
 
@@ -222,13 +223,57 @@ existing constant-Kc **Water Balance** page.
 - **Limitations:**
   - Kc values are assumed, not cultivar-specific, and not field-calibrated.
   - Irrigation events are not yet included (rainfed-only depletion).
-  - Not integrated into `main.py` — the underlying script must still be run
-    manually before this page shows data.
+  - The underlying script is now run automatically by `python main.py
+    --skip-fetch` / `python main.py` (see the pipeline-integration
+    milestone below) whenever its two inputs already exist — it can also
+    still be run manually/standalone the same as before.
   - The constant-Kc-vs-phenology-aware comparison is a prototype
     illustration only, not a validated model comparison.
 
 The original constant-Kc Water Balance page and its underlying script/CSV
 are unchanged by this addition.
+
+---
+
+## Pipeline Integration for Phenology-Aware FAO-56 Water Balance Milestone (new)
+
+The phenology-aware FAO-56 water balance script described above is now
+wired into the main pipeline, so it no longer has to be run as a separate
+manual step every time.
+
+- **What changed:** `src/pipeline/run_pipeline.py` gained one new,
+  optional pipeline step. It is included in both the full pipeline
+  (`python main.py`) and the cached-data pipeline (`python main.py
+  --skip-fetch`).
+- **Required input files:**
+  - `data/processed/muthukur_combined_feature_table.csv`
+  - `data/processed/muthukur_mango_phenology_calendar.csv`
+- **Output file:** `data/processed/muthukur_fao56_phenology_water_balance.csv`
+- **How it works:** the new pipeline step calls the existing
+  `build_fao56_phenology_water_balance()` function from
+  `src/water_balance/fao56_phenology_water_balance.py` directly — the
+  FAO-56 and Kc-by-growth-stage math was **not duplicated** anywhere in
+  the pipeline runner. If either required input file is missing, the step
+  prints a clear message naming the missing file(s) and skips itself,
+  without stopping the rest of the pipeline run.
+- **What did not change:** `main.py` itself was **not directly modified**
+  — it remains a thin entry point that delegates to
+  `src/pipeline/run_pipeline.py`, exactly as before. The original
+  constant-Kc FAO-56 script and its output CSV, the dashboard, and the
+  underlying FAO-56/Kc math are all unchanged by this milestone. The
+  standalone command (`python src/water_balance/fao56_phenology_water_balance.py`)
+  still works exactly as before, independent of the pipeline.
+- **Verification performed:** `python -m compileall app src tests main.py`
+  (clean), `python -m pytest tests/ -v` (24/24 passed), `python main.py
+  --skip-fetch` (confirmed the new step runs and regenerates the output
+  CSV), and `streamlit run app/streamlit_app.py` (dashboard still launches
+  cleanly).
+- **Limitations carried forward unchanged:** Kc values are still
+  first-pass assumptions, not cultivar-specific or field-calibrated;
+  irrigation events are still not modeled; the combined feature table and
+  the mango phenology calendar script itself are still standalone and not
+  built automatically by the pipeline (only consumed by it, if already
+  present).
 
 ---
 
@@ -248,21 +293,26 @@ are unchanged by this addition.
   computed; no satellite images are saved).
 - No field/yield validation yet (risk scores and both FAO-56 outputs have
   not been checked against real orchard outcomes).
-- The combined feature table and both FAO-56 water balance scripts are not
-  yet wired into `main.py` — all are still standalone scripts.
+- The combined feature table, the mango phenology calendar script, and the
+  constant-Kc FAO-56 water balance script are not yet wired into
+  `main.py` — only the phenology-aware FAO-56 water balance is wired in so
+  far (see the pipeline-integration milestone above), and even that step
+  still depends on the combined feature table and phenology calendar
+  already existing on disk.
 
 ## Recommended Next Steps
 
 1. **Documentation checkpoint** — this milestone summary, plus the updated
    `README.md`, `ROADMAP.md`, and `DEVELOPMENT.md`, freeze a clear record of
-   the phenology-aware FAO-56 standalone milestone before dashboard
-   visualization work begins.
+   the phenology-aware FAO-56 pipeline-integration milestone.
 2. **Optional Git commit** — commit this stable state as a checkpoint that
    can be returned to if later changes need to be rolled back.
-3. **Add the combined table and both FAO-56 scripts to the main pipeline
-   only after reviewing their stability** — once confident in their
-   behavior over more data, consider wiring them into `main.py` so they run
-   automatically.
+3. **Add the combined feature table, the mango phenology calendar, and the
+   constant-Kc FAO-56 script to the main pipeline too, once reviewed for
+   stability** — the phenology-aware FAO-56 water balance is now wired in;
+   the remaining standalone scripts can follow the same pattern (call the
+   existing function directly from `run_pipeline.py`, with a missing-input
+   skip) once their behavior over more data is reviewed.
 4. **Calibrate the phenology-aware Kc values** against local or
    cultivar-specific data as it becomes available.
 5. **Add irrigation-event, runoff, and deep-percolation tracking** to the

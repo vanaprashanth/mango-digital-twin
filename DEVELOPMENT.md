@@ -35,6 +35,29 @@ already saved in `data/raw/`. Use this for quick local testing, or when
 you have no internet connection. It's also the fastest way to confirm
 your code changes didn't break the scoring logic.
 
+Both `python main.py` and `python main.py --skip-fetch` are thin entry
+points into `src/pipeline/run_pipeline.py`, which is where the actual step
+list lives (`main.py` itself was not changed when this step was added).
+As of the phenology-aware FAO-56 pipeline integration, both commands also
+include an extra, optional step: if
+`data/processed/muthukur_combined_feature_table.csv` and
+`data/processed/muthukur_mango_phenology_calendar.csv` already exist, this
+step regenerates `data/processed/muthukur_fao56_phenology_water_balance.csv`
+by calling the existing standalone script's `build_fao56_phenology_water_balance()`
+function directly — no FAO-56 or Kc math is duplicated in the pipeline
+runner. If either input is missing, the step prints a clear message and is
+skipped without stopping the rest of the pipeline. The standalone command
+below still works exactly as before, independent of the pipeline:
+
+```bash
+python src/water_balance/fao56_phenology_water_balance.py
+```
+
+The original constant-Kc FAO-56 output
+(`data/processed/muthukur_fao56_water_balance.csv`, see step 7.11) is
+untouched by this step and remains available either by running its own
+standalone script or, as before, manually.
+
 ## 4. Run the Streamlit dashboard
 
 ```bash
@@ -56,9 +79,13 @@ phenology-aware FAO-56 output if
 `data/processed/muthukur_fao56_phenology_water_balance.csv` exists (see
 step 7.14) — each page shows a friendly warning with the exact command to
 run if its own file doesn't exist yet. Note that `main.py` does **not**
-currently run the FAO-56 script, the phenology-aware FAO-56 script, or the
-combined-feature-table script — all must be run manually before their
-dashboard pages will show data.
+currently run the constant-Kc FAO-56 script or the combined-feature-table
+script — both must still be run manually before their dashboard pages will
+show data. The **phenology-aware** FAO-56 script is the exception: as of
+the pipeline integration in step 2/3 below, `python main.py --skip-fetch`
+(and full `python main.py`) now regenerates its output CSV automatically,
+as long as the combined feature table and the mango phenology calendar
+already exist.
 
 ## 5. Run the tests
 
@@ -340,12 +367,16 @@ set 0.85, Fruit development 0.90, Maturity/harvest 0.80, Rest/vegetative
 `root_zone_depletion_mm`, `ks`, `water_stress_score`, and
 `water_stress_level`. It logs stage day counts, Kc-by-stage, and a
 water-stress breakdown. **The original constant-Kc FAO-56 script and its
-output CSV (step 7.11) are not modified.** This script is currently
-**standalone** with respect to the pipeline: it is not wired into
-`main.py` (see step 2/3 above for what `main.py --skip-fetch` actually
-runs). The Kc values above are first-pass assumptions based on general
-mango/FAO-56 guidance — not field-calibrated or cultivar-specific for this
-orchard.
+output CSV (step 7.11) are not modified.** As of the pipeline integration
+described in step 2/3 above, this script is **no longer standalone with
+respect to the pipeline**: `python main.py --skip-fetch` (and full
+`python main.py`) now runs it automatically, via a step in
+`src/pipeline/run_pipeline.py` that calls this script's existing
+`build_fao56_phenology_water_balance()` function directly (no math
+duplicated, `main.py` itself unchanged). The standalone command shown
+above still works exactly the same, independent of the pipeline. The Kc
+values above are first-pass assumptions based on general mango/FAO-56
+guidance — not field-calibrated or cultivar-specific for this orchard.
 
 ### 7.14 Phenology Water Balance dashboard page
 
@@ -445,6 +476,12 @@ a later phase.
   `fao56_water_balance.py`. Writes
   `data/processed/muthukur_fao56_phenology_water_balance.csv`. Does not
   modify the original constant-Kc script or CSV. Shown on the dashboard's
-  **Phenology Water Balance** page (step 7.14). Standalone with respect to
-  the pipeline — not wired into `main.py`. Kc values are first-pass
-  assumptions, not field-calibrated or cultivar-specific.
+  **Phenology Water Balance** page (step 7.14). Wired into the pipeline via
+  `src/pipeline/run_pipeline.py` (an optional step that calls this script's
+  `build_fao56_phenology_water_balance()` function directly, with no math
+  duplicated) — `python main.py --skip-fetch` and full `python main.py`
+  both regenerate its output CSV automatically whenever the combined
+  feature table and phenology calendar already exist; the standalone
+  command above still works on its own too. `main.py` itself was not
+  modified. Kc values are first-pass assumptions, not field-calibrated or
+  cultivar-specific.
