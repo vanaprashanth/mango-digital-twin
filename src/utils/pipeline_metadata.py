@@ -216,12 +216,20 @@ def build_pipeline_metadata(
     pipeline_mode: str,
     status: str,
     extra_warnings: list[str] | None = None,
+    step_results: list[dict] | None = None,
 ) -> dict:
     """
     Build the full pipeline-run metadata dict by inspecting the project's
     existing source and output CSVs. Does not read or write any file other
     than the small reads needed for row counts / latest dates -- it does
     not regenerate or modify any pipeline output.
+
+    `step_results` is an optional list of dicts (each with "name", "status"
+    -- RUN / SKIP_FRESH / SKIP_MISSING_INPUT / FAILED -- and "detail"),
+    produced by src/pipeline/run_pipeline.py's freshness-aware step runner.
+    This is purely additive: it does not change any existing field, so
+    older consumers of this JSON (e.g. the dashboard's freshness panel)
+    keep working unchanged even though this key wasn't present before.
     """
     config = get_config()
 
@@ -269,6 +277,7 @@ def build_pipeline_metadata(
         "file_modified_timestamps": file_modified_timestamps,
         "missing_file_warnings": missing_file_warnings,
         "near_real_time_note": NEAR_REAL_TIME_NOTE,
+        "step_results": step_results or [],
     }
 
     log.info(
