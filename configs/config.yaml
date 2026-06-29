@@ -117,6 +117,8 @@ paths:
   fao56_water_balance_csv: "data/processed/muthukur_fao56_water_balance.csv"
   mango_phenology_calendar_csv: "data/processed/muthukur_mango_phenology_calendar.csv"
   fao56_phenology_water_balance_csv: "data/processed/muthukur_fao56_phenology_water_balance.csv"
+  fao56_model_comparison_csv: "data/processed/muthukur_fao56_model_comparison.csv"
+  fao56_model_comparison_summary_md: "data/processed/muthukur_fao56_model_comparison_summary.md"
 
 risk_thresholds:
   classification:
