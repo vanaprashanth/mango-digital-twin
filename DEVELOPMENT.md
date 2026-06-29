@@ -14,49 +14,74 @@ pip install -r requirements.txt
 Run this once, and again any time `requirements.txt` changes (it now
 includes `pytest` for running tests).
 
-## 2. Run the full pipeline (fetches fresh data)
+## 2. Run the unified pipeline without re-fetching (recommended day-to-day command)
+
+```bash
+python main.py --skip-fetch
+```
+
+This is now the **recommended main command** for day-to-day use: a single,
+near-real-time pipeline run that brings every downstream output up to date
+from cached/raw data already on disk, with no network calls. It runs in two
+layers:
+
+1. **Core risk recomputation** — historical risk and forecast risk are
+   recomputed from the weather/soil CSVs already saved in `data/raw/`.
+2. **Freshness-aware downstream steps**, run in dependency order: Sentinel-2
+   daily aggregation, the combined feature table, the mango phenology
+   calendar, the constant-Kc FAO-56 water balance, the phenology-aware
+   FAO-56 water balance, and the FAO-56 model comparison. Each step calls
+   the corresponding standalone script's own existing build function
+   directly — no scientific/model logic is duplicated in the pipeline
+   runner.
+
+Each downstream step prints one of four statuses, also recorded per-step in
+`data/processed/pipeline_run_metadata.json`:
+
+- **`RUN`** — the step's output was missing, or older than at least one of
+  its required inputs, so it was regenerated.
+- **`SKIP_FRESH`** — the step's output already exists and is newer than
+  every required input, so it was left alone.
+- **`SKIP_MISSING_INPUT`** — a required input file doesn't exist yet, so
+  the step was skipped with a warning instead of failing the whole run.
+- **`FAILED`** — the step's build function raised an exception or reported
+  failure; the rest of the pipeline still continues, and the failure is
+  recorded in the metadata JSON.
+
+This is the fastest way to confirm your code changes didn't break the
+scoring or modeling logic, and it works with no internet connection.
+
+## 3. Run the full pipeline (fetches fresh data first)
 
 ```bash
 python main.py
 ```
 
 This fetches fresh weather (NASA POWER, Open-Meteo) and soil (SoilGrids)
-data, then runs both risk engines. Use this when you want up-to-date
-numbers. It needs an internet connection.
-
-## 3. Run the pipeline without re-fetching (uses cached CSVs)
-
-```bash
-python main.py --skip-fetch
-```
-
-This re-runs only the risk-scoring steps against the weather/soil CSVs
-already saved in `data/raw/`. Use this for quick local testing, or when
-you have no internet connection. It's also the fastest way to confirm
-your code changes didn't break the scoring logic.
+data, runs both risk engines, and then runs the exact same freshness-aware
+downstream steps described in step 2 above. Use this when you want
+up-to-date raw data before everything downstream is refreshed. It needs an
+internet connection.
 
 Both `python main.py` and `python main.py --skip-fetch` are thin entry
 points into `src/pipeline/run_pipeline.py`, which is where the actual step
-list lives (`main.py` itself was not changed when this step was added).
-As of the phenology-aware FAO-56 pipeline integration, both commands also
-include an extra, optional step: if
-`data/processed/muthukur_combined_feature_table.csv` and
-`data/processed/muthukur_mango_phenology_calendar.csv` already exist, this
-step regenerates `data/processed/muthukur_fao56_phenology_water_balance.csv`
-by calling the existing standalone script's `build_fao56_phenology_water_balance()`
-function directly — no FAO-56 or Kc math is duplicated in the pipeline
-runner. If either input is missing, the step prints a clear message and is
-skipped without stopping the rest of the pipeline. The standalone command
-below still works exactly as before, independent of the pipeline:
+list lives (`main.py` itself was not changed by the orchestration
+milestone). **Every standalone script for every step above still exists
+and can be run individually** (see step 7 below) for targeted debugging of
+one specific step — but the recommended workflow for normal use is the
+single `python main.py --skip-fetch` command, not running each script by
+hand. For example, the phenology-aware FAO-56 script can still be run on
+its own:
 
 ```bash
 python src/water_balance/fao56_phenology_water_balance.py
 ```
 
 The original constant-Kc FAO-56 output
-(`data/processed/muthukur_fao56_water_balance.csv`, see step 7.11) is
-untouched by this step and remains available either by running its own
-standalone script or, as before, manually.
+(`data/processed/muthukur_fao56_water_balance.csv`, see step 7.11) and the
+phenology-aware output are both now regenerated automatically by the
+unified pipeline command in step 2 above, as long as their own required
+inputs already exist.
 
 ## 4. Run the Streamlit dashboard
 
@@ -78,14 +103,14 @@ step 7.11), and the **Phenology Water Balance** page, which shows the
 phenology-aware FAO-56 output if
 `data/processed/muthukur_fao56_phenology_water_balance.csv` exists (see
 step 7.14) — each page shows a friendly warning with the exact command to
-run if its own file doesn't exist yet. Note that `main.py` does **not**
-currently run the constant-Kc FAO-56 script or the combined-feature-table
-script — both must still be run manually before their dashboard pages will
-show data. The **phenology-aware** FAO-56 script is the exception: as of
-the pipeline integration in step 2/3 below, `python main.py --skip-fetch`
-(and full `python main.py`) now regenerates its output CSV automatically,
-as long as the combined feature table and the mango phenology calendar
-already exist.
+run if its own file doesn't exist yet. As of the unified pipeline
+orchestration milestone, `python main.py --skip-fetch` (see step 2 above)
+now regenerates **all** of these output CSVs automatically — the combined
+feature table, the constant-Kc FAO-56 script, the mango phenology
+calendar, and the phenology-aware FAO-56 script no longer need to be run
+manually before their dashboard pages show data, as long as their own
+required inputs (ultimately, the raw weather/soil/Sentinel-2 data) already
+exist on disk.
 
 ## 5. Run the tests
 
@@ -110,13 +135,19 @@ Useful to run before committing changes or after editing several files.
 ## What "it's working" looks like
 
 After steps 1–6 above, you should see:
-- Step 3 prints a pipeline summary and ends with `Pipeline finished
-  successfully.`
+- Step 2 prints a console summary ending with `Core pipeline (fetch/risk)
+  finished successfully.`, followed by a `RUN` / `SKIP_FRESH` /
+  `SKIP_MISSING_INPUT` / `FAILED` line for each of the six freshness-aware
+  downstream steps, and finally `Pipeline run metadata written to:
+  data/processed/pipeline_run_metadata.json`.
 - Step 5 ends with all tests showing `PASSED` and a line like `24 passed
   in 1.22s`.
 - Step 6 produces no output (silence means no syntax errors).
 - `logs/pipeline.log` contains a fresh `STARTING` / `SUCCEEDED` line for
   each pipeline step you just ran.
+- `data/processed/pipeline_run_metadata.json` contains a `step_results`
+  array listing every freshness-aware step's name, status, and detail from
+  the most recent run.
 
 ## 7. Google Earth Engine setup (Sentinel-2 prep phase)
 
@@ -285,9 +316,11 @@ label (`Fresh` / `Moderate` / `Stale` / `Missing`). It also attaches the
 constant SoilGrids soil properties (sand/silt/clay %, pH, organic carbon,
 bulk density, CEC, soil irrigation factor) to every row. It logs input/
 output row counts and vegetation match coverage. The resulting CSV is shown
-on the dashboard's **Combined Intelligence** page (see below), but the
-script itself is still standalone: not wired into `main.py` yet — this is
-prep work for FAO-56 modeling and (much later) ML.
+on the dashboard's **Combined Intelligence** page (see below). As of the
+unified pipeline orchestration milestone, this script is also regenerated
+automatically by `python main.py --skip-fetch` (step 2 above) whenever its
+own required inputs already exist — it can still be run standalone for
+targeted debugging using the command above.
 
 ### 7.10 Combined Intelligence dashboard page
 
@@ -326,8 +359,11 @@ water-stress level. It logs TAW/RAW and a water-stress-day breakdown. The
 resulting CSV is shown on the dashboard's **Water Balance** page (see
 below). **This is a simplified rainfed prototype**: Kc is constant (not
 phenology-aware), there are no modeled irrigation events, and there is no
-separate runoff/deep-percolation accounting — the script itself is still
-standalone, **not wired into `main.py` yet**.
+separate runoff/deep-percolation accounting. As of the unified pipeline
+orchestration milestone, this script is also regenerated automatically by
+`python main.py --skip-fetch` (step 2 above) whenever its required input
+already exists — it can still be run standalone for targeted debugging
+using the command above.
 
 ### 7.12 Water Balance dashboard page
 
@@ -367,9 +403,9 @@ set 0.85, Fruit development 0.90, Maturity/harvest 0.80, Rest/vegetative
 `root_zone_depletion_mm`, `ks`, `water_stress_score`, and
 `water_stress_level`. It logs stage day counts, Kc-by-stage, and a
 water-stress breakdown. **The original constant-Kc FAO-56 script and its
-output CSV (step 7.11) are not modified.** As of the pipeline integration
-described in step 2/3 above, this script is **no longer standalone with
-respect to the pipeline**: `python main.py --skip-fetch` (and full
+output CSV (step 7.11) are not modified.** As of the unified pipeline
+orchestration described in step 2 above, this script is **no longer
+standalone with respect to the pipeline**: `python main.py --skip-fetch` (and full
 `python main.py`) now runs it automatically, via a step in
 `src/pipeline/run_pipeline.py` that calls this script's existing
 `build_fao56_phenology_water_balance()` function directly (no math
@@ -399,9 +435,11 @@ interpretation notes on how Kc and water sensitivity change by stage; and
 an expandable raw table. It carries an explicit disclaimer that this is a
 simplified, assumption-based, non-field-calibrated prototype with no
 irrigation events modeled yet. It is read-only and does not change
-`main.py` or any other dashboard page. Note that `main.py` still does
-**not** run `fao56_phenology_water_balance.py` automatically — it must be
-run manually (step 7.13) before this page shows data.
+`main.py` or any other dashboard page. As of the unified pipeline
+orchestration milestone, `python main.py --skip-fetch` (step 2 above) now
+regenerates this script's output CSV automatically whenever its required
+inputs already exist, so manually running step 7.13 first is no longer
+required.
 
 ### 7.15 What's configured so far
 
@@ -454,18 +492,22 @@ a later phase.
   SoilGrids soil CSV into one combined table
   (`data/processed/muthukur_combined_feature_table.csv`), using the
   nearest *previous* Sentinel-2 observation for each weather date (never a
-  future one) plus a freshness flag. The script itself is standalone — not
-  wired into `main.py` yet — but its output CSV is shown on the dashboard's
-  **Combined Intelligence** page (step 7.10), the first page that interprets
-  weather risk, soil conditions, and vegetation health together. This is
-  still prep work for FAO-56 modeling and (much later) ML.
+  future one) plus a freshness flag. As of the unified pipeline
+  orchestration milestone, `python main.py --skip-fetch` also regenerates
+  this output automatically whenever its required inputs already exist —
+  its output CSV is shown on the dashboard's **Combined Intelligence** page
+  (step 7.10), the first page that interprets weather risk, soil
+  conditions, and vegetation health together. This is still prep work for
+  FAO-56 modeling and (much later) ML.
 - `src/water_balance/fao56_water_balance.py` (step 7.11) — computes a daily
   FAO-56 Penman-Monteith soil-water balance (ET0, ETc, TAW, RAW, root-zone
   depletion, Ks water-stress coefficient) from the combined feature table,
   writing `data/processed/muthukur_fao56_water_balance.csv`. Shown on the
   dashboard's **Water Balance** page (step 7.12) — the first
-  physics-informed water-stress view in the project. Standalone — **not
-  wired into `main.py` yet**. Known limitations of this prototype: a
+  physics-informed water-stress view in the project. As of the unified
+  pipeline orchestration milestone, this output is also regenerated
+  automatically by `python main.py --skip-fetch` whenever its required
+  input already exists. Known limitations of this prototype: a
   constant crop coefficient (Kc = 0.75, not phenology-aware), rainfed-only
   depletion (no modeled irrigation events), no runoff/deep-percolation
   accounting, and no field validation.
@@ -476,12 +518,20 @@ a later phase.
   `fao56_water_balance.py`. Writes
   `data/processed/muthukur_fao56_phenology_water_balance.csv`. Does not
   modify the original constant-Kc script or CSV. Shown on the dashboard's
-  **Phenology Water Balance** page (step 7.14). Wired into the pipeline via
-  `src/pipeline/run_pipeline.py` (an optional step that calls this script's
-  `build_fao56_phenology_water_balance()` function directly, with no math
-  duplicated) — `python main.py --skip-fetch` and full `python main.py`
-  both regenerate its output CSV automatically whenever the combined
-  feature table and phenology calendar already exist; the standalone
-  command above still works on its own too. `main.py` itself was not
-  modified. Kc values are first-pass assumptions, not field-calibrated or
-  cultivar-specific.
+  **Phenology Water Balance** page (step 7.14). As of the unified pipeline
+  orchestration milestone, this is one of six freshness-aware steps in
+  `src/pipeline/run_pipeline.py` that call each script's own existing build
+  function directly, with no math duplicated — `python main.py
+  --skip-fetch` and full `python main.py` both regenerate its output CSV
+  automatically whenever the combined feature table and phenology calendar
+  already exist; the standalone command above still works on its own too.
+  `main.py` itself was not modified. Kc values are first-pass assumptions,
+  not field-calibrated or cultivar-specific.
+- `src/validation/compare_fao56_models.py` — compares the constant-Kc and
+  phenology-aware FAO-56 outputs day by day (ETc differences, stress-level
+  changes, stage-wise breakdowns), writing
+  `data/processed/muthukur_fao56_model_comparison.csv` and a markdown
+  summary. As of the unified pipeline orchestration milestone, this is the
+  last of the six freshness-aware steps in `run_pipeline.py`, regenerated
+  automatically by `python main.py --skip-fetch` whenever both FAO-56
+  outputs already exist. No dashboard page for this comparison exists yet.

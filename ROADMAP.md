@@ -24,6 +24,7 @@ Working and verified on the local Windows/VS Code setup:
 9. NASA POWER `-999` missing-value cleaning
 10. README and project structure cleanup
 11. `main.py` pipeline runner with `--skip-fetch`
+12. Unified, freshness-aware pipeline orchestration — `python main.py --skip-fetch` is now the single command that regenerates/refreshes every downstream output (historical risk, forecast risk, Sentinel-2 daily aggregation, the combined feature table, the mango phenology calendar, both FAO-56 water-balance models, and the FAO-56 model comparison) using RUN / SKIP_FRESH / SKIP_MISSING_INPUT logic, with per-step results recorded in `pipeline_run_metadata.json`
 
 **Important clarification, preserved throughout this roadmap:** the "future
 prediction" shown today is *not* a trained ML model. It is:
@@ -188,16 +189,32 @@ downloads):
    breakdowns and a labeled prototype comparison against the constant-Kc
    Water Balance page where that output exists.
 4. [DONE] Pipeline integration for the phenology-aware FAO-56 water
-   balance — `src/pipeline/run_pipeline.py` now includes an optional step
-   that calls the existing `build_fao56_phenology_water_balance()`
-   function directly (no FAO-56/Kc math duplicated), so
-   `python main.py --skip-fetch` (and full `python main.py`) automatically
-   regenerates `data/processed/muthukur_fao56_phenology_water_balance.csv`
-   whenever its two inputs (the combined feature table and the mango
-   phenology calendar) already exist. `main.py` itself was not modified —
-   it still only delegates to `run_pipeline.py`. If either required input
-   is missing, the step prints a clear message and skips itself without
-   stopping the rest of the pipeline.
+   balance — `src/pipeline/run_pipeline.py` originally included an
+   optional step that called the existing
+   `build_fao56_phenology_water_balance()` function directly (no
+   FAO-56/Kc math duplicated). This step has since been superseded by the
+   unified, freshness-aware orchestration in item 5 below, which covers the
+   same step plus every other downstream output.
+5. [DONE] **Unified, freshness-aware pipeline orchestration** —
+   `src/pipeline/run_pipeline.py` was rebuilt around a two-layer design.
+   Layer 1 (unchanged) runs the core fetch/risk steps in strict order.
+   Layer 2 adds freshness-aware steps, run in dependency order, for
+   Sentinel-2 daily aggregation, the combined feature table, the mango
+   phenology calendar, the constant-Kc FAO-56 water balance, the
+   phenology-aware FAO-56 water balance, and the FAO-56 model comparison.
+   Each step calls the corresponding standalone script's own existing
+   build function — no scientific/model logic was duplicated. Each step is
+   independently checked for missing required inputs (skipped with a
+   warning, not a failure, if missing) and for freshness (skipped as
+   `SKIP_FRESH` if its output is already newer than every required input).
+   `python main.py --skip-fetch` is now a single command that brings every
+   downstream output up to date from cached/raw data with no network
+   calls — this is the project's "one-command regeneration" milestone.
+   `data/processed/pipeline_run_metadata.json` now also records a
+   per-step `RUN` / `SKIP_FRESH` / `SKIP_MISSING_INPUT` / `FAILED` result
+   for every freshness-aware step, alongside its existing freshness
+   metadata. No Airflow/Prefect/Dagster/database/scheduler was introduced —
+   this remains a local, dependency-ordered Python script.
 
 Kc values used (first-pass assumptions, not field-calibrated):
 
@@ -212,15 +229,15 @@ Kc values used (first-pass assumptions, not field-calibrated):
 
 Not yet done from Phase 5 scope (kept as future work, not started):
 
-- Wiring the mango phenology calendar script itself into `main.py`
-  (the phenology-aware FAO-56 water balance step is now wired in; see
-  item 4 above)
 - Local/cultivar-specific Kc calibration (current values are generic
   FAO-56/mango guidance, not measured at this orchard)
 - Irrigation-event modeling (still rainfed-only depletion)
 - Field/yield validation
 - Phenology-aware heat/disease/forecast risk logic beyond Kc (items 1-4
   in the "Risk should change by stage" list above)
+- A real scheduler for unattended/recurring pipeline runs (the pipeline
+  itself is now unified and freshness-aware, via item 5 above, but nothing
+  triggers it automatically yet — every run is still manually invoked)
 
 ---
 

@@ -277,6 +277,71 @@ manual step every time.
 
 ---
 
+## Unified Freshness-Aware Pipeline Orchestration Milestone (new)
+
+The pipeline-integration milestone above wired in one script
+(phenology-aware FAO-56) as a single optional step. This milestone replaces
+that with a general, unified orchestration layer covering every downstream
+output, so `python main.py --skip-fetch` now behaves as a real
+near-real-time, one-command pipeline.
+
+- **What changed:** `src/pipeline/run_pipeline.py` was rebuilt around a
+  two-layer design. Layer 1 (unchanged) runs the original core fetch/risk
+  steps in strict order, stopping on first failure as before. Layer 2 adds
+  six freshness-aware steps, always run after Layer 1 regardless of Layer
+  1's outcome: Sentinel-2 daily aggregation, the combined weather + soil +
+  vegetation feature table, the mango phenology calendar, the constant-Kc
+  FAO-56 water balance, the phenology-aware FAO-56 water balance, and the
+  FAO-56 model comparison. Each Layer 2 step calls the corresponding
+  standalone script's own existing build function directly — no FAO-56,
+  Kc, or vegetation-index math was duplicated in the pipeline runner.
+  `src/utils/pipeline_metadata.py` gained an additive `step_results` field
+  recording, for every freshness-aware step, its name, status, and a short
+  detail message.
+- **Why it matters:** before this milestone, keeping every downstream
+  output current meant remembering to run several scripts by hand in the
+  right order, or risking stale dashboard data. Now a single command,
+  `python main.py --skip-fetch`, brings every downstream output up to date
+  from cached/raw data with no network calls — the project's "one-command
+  regeneration" milestone. Each step is checked individually for missing
+  required inputs (skipped with a warning, not a failure, so one missing
+  upstream file doesn't break the whole run) and for freshness (skipped as
+  `SKIP_FRESH` if its output is already newer than every required input,
+  so unnecessary recomputation is avoided when nothing has changed).
+- **Key outputs:**
+  - `python main.py --skip-fetch` as the recommended day-to-day command,
+    and `python main.py` (full fetch + everything above) as the full
+    end-to-end option.
+  - A per-step `RUN` / `SKIP_FRESH` / `SKIP_MISSING_INPUT` / `FAILED`
+    status for each of the six freshness-aware steps, printed to the
+    console and recorded in `data/processed/pipeline_run_metadata.json`
+    under a new `step_results` array, alongside the metadata file's
+    existing run timestamps, latest dates, row counts, and file
+    modification times.
+  - Every standalone script for every step still exists and still works
+    exactly as before for targeted, single-step debugging — the pipeline
+    command is additive, not a replacement for those scripts.
+- **Limitations:**
+  - Still local-only — no scheduler exists yet, so the pipeline must still
+    be triggered manually every time; nothing runs it automatically on a
+    timer.
+  - No database — all inputs and outputs remain CSV/JSON files on the
+    local disk.
+  - No cloud deployment yet — storage, scheduling, and the dashboard all
+    still run on the local PC, as planned for a later phase in
+    `ROADMAP.md`.
+  - No AI/ML yet — every step is still a transparent, rule-based or
+    physics-informed calculation; nothing in this milestone introduces a
+    trained model.
+  - Freshness checks are based on file modification time, not on whether
+    the underlying data actually changed — because the historical/forecast
+    risk engines rewrite their output files on every run, most downstream
+    steps will still show `RUN` (not `SKIP_FRESH`) on every consecutive
+    pipeline invocation today; this is expected with the current design,
+    not a bug.
+
+---
+
 ## What Has Not Been Done Yet
 
 - No local/cultivar-specific calibration of the phenology-aware Kc values —
@@ -293,34 +358,36 @@ manual step every time.
   computed; no satellite images are saved).
 - No field/yield validation yet (risk scores and both FAO-56 outputs have
   not been checked against real orchard outcomes).
-- The combined feature table, the mango phenology calendar script, and the
-  constant-Kc FAO-56 water balance script are not yet wired into
-  `main.py` — only the phenology-aware FAO-56 water balance is wired in so
-  far (see the pipeline-integration milestone above), and even that step
-  still depends on the combined feature table and phenology calendar
-  already existing on disk.
+- No real scheduler yet — as of the unified freshness-aware pipeline
+  orchestration milestone above, `python main.py --skip-fetch` is a single
+  command that can regenerate every downstream output, but nothing
+  triggers that command automatically; every run is still manually
+  invoked.
+- No database yet — all data still lives in local CSV/JSON files.
+- No FAO-56 Model Comparison dashboard page yet — the comparison script and
+  its output CSV exist and are wired into the pipeline, but there is no
+  dashboard page presenting it yet.
 
 ## Recommended Next Steps
 
 1. **Documentation checkpoint** — this milestone summary, plus the updated
    `README.md`, `ROADMAP.md`, and `DEVELOPMENT.md`, freeze a clear record of
-   the phenology-aware FAO-56 pipeline-integration milestone.
+   the unified freshness-aware pipeline orchestration milestone.
 2. **Optional Git commit** — commit this stable state as a checkpoint that
    can be returned to if later changes need to be rolled back.
-3. **Add the combined feature table, the mango phenology calendar, and the
-   constant-Kc FAO-56 script to the main pipeline too, once reviewed for
-   stability** — the phenology-aware FAO-56 water balance is now wired in;
-   the remaining standalone scripts can follow the same pattern (call the
-   existing function directly from `run_pipeline.py`, with a missing-input
-   skip) once their behavior over more data is reviewed.
-4. **Calibrate the phenology-aware Kc values** against local or
+3. **Add a real scheduler** for unattended/recurring pipeline runs, now
+   that the pipeline itself is unified and freshness-aware and only needs
+   to be triggered.
+4. **Add the FAO-56 Model Comparison dashboard page**, now that the
+   comparison script and output CSV exist and are wired into the pipeline.
+5. **Calibrate the phenology-aware Kc values** against local or
    cultivar-specific data as it becomes available.
-5. **Add irrigation-event, runoff, and deep-percolation tracking** to the
+6. **Add irrigation-event, runoff, and deep-percolation tracking** to the
    water balance, moving it past a rainfed-only prototype.
-6. **Later, prepare cloud deployment** — once the local system and
+7. **Later, prepare cloud deployment** — once the local system and
    phenology work are stable, move storage, scheduling, and the dashboard
    to the cloud (GCP, as planned in `ROADMAP.md`).
-7. **Later, explore IndiaAI only if GPU-heavy work is needed** — for example,
+8. **Later, explore IndiaAI only if GPU-heavy work is needed** — for example,
    if a future ML or deep-learning model genuinely requires GPU compute at
    scale.
 

@@ -237,23 +237,56 @@ pip install -r requirements.txt
 
 ## 8. How to Run the Project
 
-### Option A: Run the full pipeline (recommended)
-
-```bash
-python main.py
-```
-
-This runs every step in the correct order: NASA POWER fetch → SoilGrids fetch → historical risk engine → Open-Meteo fetch → forecast risk engine → phenology-aware FAO-56 water balance (optional step, see below).
-
-If you only want to recompute risk scores from already-downloaded raw data (no network calls), use:
+### Option A: Run the unified pipeline (recommended)
 
 ```bash
 python main.py --skip-fetch
 ```
 
-`main.py` itself is just a thin entry point — both commands above delegate to `src/pipeline/run_pipeline.py`, which defines the actual step list.
+As of the pipeline-orchestration milestone, this is the main near-real-time
+pipeline command — a single command that brings every downstream output up
+to date from whatever raw/cached data is already on disk, with no network
+calls. It runs in two layers every time:
 
-Both commands also run an additional, optional pipeline step: the phenology-aware FAO-56 water balance. If its two required inputs already exist (`data/processed/muthukur_combined_feature_table.csv` and `data/processed/muthukur_mango_phenology_calendar.csv`), this step regenerates `data/processed/muthukur_fao56_phenology_water_balance.csv` by calling the existing standalone script's function (see section 10 below) — no FAO-56 or Kc logic is duplicated in the pipeline. If either input is missing, the step prints a clear message and skips itself without stopping the rest of the pipeline. The original constant-Kc FAO-56 output (`data/processed/muthukur_fao56_water_balance.csv`) is unaffected by this step and remains available exactly as before.
+1. **Core risk recomputation** — historical risk and forecast risk are
+   recomputed from the cached NASA POWER / Open-Meteo / SoilGrids CSVs.
+2. **Freshness-aware downstream steps** — Sentinel-2 daily aggregation, the
+   combined feature table, the mango phenology calendar, the constant-Kc
+   FAO-56 water balance, the phenology-aware FAO-56 water balance, and the
+   FAO-56 model comparison are each regenerated or refreshed automatically,
+   in that dependency order, using the existing standalone scripts' own
+   build functions — no scientific logic is duplicated in the pipeline
+   runner.
+
+Each downstream step uses **freshness-aware RUN / SKIP_FRESH logic**: if a
+step's output file already exists and is newer than every one of its
+required input files, the step prints `SKIP` and a reason instead of
+re-running for nothing; if the output is missing or any input is newer than
+it, the step prints `RUN` and regenerates it. A step whose required input
+doesn't exist yet at all is skipped with a clear warning (`SKIP_MISSING_INPUT`)
+rather than failing the whole pipeline run.
+
+If you want a full run including fresh network fetches (NASA POWER,
+SoilGrids, Open-Meteo) before the same downstream regeneration, drop the
+flag:
+
+```bash
+python main.py
+```
+
+This runs every fetch/risk step in the correct order — NASA POWER fetch →
+SoilGrids fetch → historical risk engine → Open-Meteo fetch → forecast risk
+engine — and then the same freshness-aware downstream steps as above.
+
+`main.py` itself is just a thin entry point — both commands above delegate
+to `src/pipeline/run_pipeline.py`, which defines the actual step list.
+
+Every run writes `data/processed/pipeline_run_metadata.json`, recording the
+run's start/end timestamps, latest available date per key file, row counts,
+file modification times, and a per-step `RUN` / `SKIP_FRESH` /
+`SKIP_MISSING_INPUT` / `FAILED` result for every freshness-aware step — so
+you can see exactly what happened on the last run without re-reading every
+CSV yourself.
 
 Then launch the dashboard:
 
@@ -416,20 +449,21 @@ Stage-aware Kc values used (first-pass assumptions, not field-calibrated):
 
 The original constant-Kc FAO-56 script and its output CSV are untouched —
 this is a separate, parallel script and output file, and it still remains
-available on its own (run it directly, or via `python main.py`, see
-section 8 below). This script's output is now visible on the dashboard's
-**Phenology Water Balance** page (see section 11 below). **This model is
-now wired into the main pipeline:** `python main.py --skip-fetch` (and the
-full `python main.py` run) regenerates
-`data/processed/muthukur_fao56_phenology_water_balance.csv` automatically,
-via a step in `src/pipeline/run_pipeline.py` that calls this script's
-existing `build_fao56_phenology_water_balance()` function directly — no
-FAO-56 or Kc math is duplicated in the pipeline runner. The standalone
-command (`python src/water_balance/fao56_phenology_water_balance.py`)
-still works exactly as before. It remains a prototype — Kc values are
-assumed, not cultivar-specific, not field-calibrated, and irrigation events
-are not yet included. See `ROADMAP.md` and `MILESTONE_SUMMARY.md` for
-limitations and next steps.
+available on its own (run it directly, or via `python main.py --skip-fetch`,
+see section 8 above). This script's output is now visible on the
+dashboard's **Phenology Water Balance** page (see section 11 below). **Both
+FAO-56 models, the combined feature table, the mango phenology calendar,
+and the FAO-56 model comparison are now wired into the unified pipeline:**
+`python main.py --skip-fetch` (and the full `python main.py` run)
+regenerates all of them automatically, in dependency order, via
+freshness-aware steps in `src/pipeline/run_pipeline.py` that call each
+script's own existing build function directly — no FAO-56 or Kc math is
+duplicated in the pipeline runner. The standalone command
+(`python src/water_balance/fao56_phenology_water_balance.py`) still works
+exactly as before, for targeted debugging. It remains a prototype — Kc
+values are assumed, not cultivar-specific, not field-calibrated, and
+irrigation events are not yet included. See `ROADMAP.md` and
+`MILESTONE_SUMMARY.md` for limitations and next steps.
 
 ---
 
@@ -510,11 +544,12 @@ Completed:
 - Mango phenology calendar (`src/phenology/mango_phenology_calendar.py`) a regional, generic growth-stage calendar assigning one mango stage per date
 - Phenology-aware FAO-56 standalone script (`src/water_balance/fao56_phenology_water_balance.py`) joins the combined feature table with the phenology calendar and assigns Kc by growth stage instead of a constant value, reusing the same ET0/TAW/RAW/depletion logic as the original FAO-56 script
 - Phenology Water Balance dashboard page visualizes the phenology-aware FAO-56 output, with a labeled prototype comparison against the constant-Kc Water Balance page
-- Phenology-aware FAO-56 water balance wired into the main pipeline (`src/pipeline/run_pipeline.py`): `python main.py --skip-fetch` (and full `python main.py`) now regenerates `data/processed/muthukur_fao56_phenology_water_balance.csv` automatically, by calling the existing standalone script's function directly — no math duplicated, `main.py` itself unchanged
+- A standalone FAO-56 model comparison script (`src/validation/compare_fao56_models.py`) comparing the constant-Kc and phenology-aware FAO-56 outputs day by day
+- **Unified, freshness-aware pipeline orchestration** (`src/pipeline/run_pipeline.py`): `python main.py --skip-fetch` is now the single near-real-time command that regenerates or refreshes historical risk, forecast risk, Sentinel-2 daily aggregation, the combined feature table, the mango phenology calendar, both FAO-56 water-balance models, and the FAO-56 model comparison — each step independently checked for missing inputs and skipped (`SKIP_FRESH`) if its output is already newer than every required input, with the per-step result recorded in `pipeline_run_metadata.json`. No scientific/model logic was duplicated — every step calls the relevant script's own existing function.
 
-Note: the combined feature table, the constant-Kc FAO-56 script, and the mango phenology calendar script are still standalone — only the phenology-aware FAO-56 water balance is wired into `main.py` so far. No ML or cloud/GPU work has started.
+Note: the standalone scripts for every step above still exist and can be run individually for targeted debugging, but the recommended day-to-day workflow is the single `python main.py --skip-fetch` command. No ML or cloud/GPU work has started.
 
-Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for full detail): review stability of the combined feature table and FAO-56 output before wiring either into `main.py`, then phenology-aware crop coefficients/risk logic, and advanced modeling (Monte Carlo, Bayesian calibration, ML-based forecasting) with cloud deployment and IndiaAI Compute as later-stage options only if a genuine deployment/GPU/scale need arises.
+Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for full detail): phenology-aware crop coefficients/risk logic beyond Kc, calibration of Kc values against local/cultivar data, and advanced modeling (Monte Carlo, Bayesian calibration, ML-based forecasting) with cloud deployment, a real scheduler, and IndiaAI Compute as later-stage options only if a genuine deployment/GPU/scale need arises.
 
 ---
 
@@ -522,10 +557,10 @@ Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for
 
 Planned future upgrades:
 
-- Wire the combined weather/soil/vegetation feature table, the mango phenology calendar, and the constant-Kc FAO-56 water balance script into `main.py` (the phenology-aware FAO-56 water balance is now wired in; only after stability is reviewed for the rest)
 - Calibrate the phenology-aware Kc stage values against local/cultivar-specific data (current values are first-pass assumptions)
 - Add irrigation-event, runoff, and deep-percolation tracking to the water balance (currently rainfed-only depletion)
 - Add phenology-aware mango risk modeling (beyond Kc heat/disease/forecast risk by growth stage)
+- Add a real scheduler for unattended/recurring runs (the pipeline itself is now unified and freshness-aware, but nothing schedules it yet — every run is still manually triggered)
 - Add Ensemble Kalman Filter state estimation
 - Add Monte Carlo uncertainty simulation
 - Add GCP deployment
