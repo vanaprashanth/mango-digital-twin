@@ -30,9 +30,62 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 from src.weather import fetch_weather, fetch_open_meteo
 from src.soil import fetch_soilgrids
 from src.risk import historical_risk_engine, open_meteo_risk_engine
+from src.water_balance import fao56_phenology_water_balance
+from src.utils.config import get_config
 from src.utils.logger import get_logger
 
 log = get_logger(__name__)
+
+
+def run_phenology_aware_fao56_step() -> None:
+    """
+    Optional pipeline step: regenerate the phenology-aware FAO-56 water
+    balance CSV (data/processed/muthukur_fao56_phenology_water_balance.csv)
+    by re-using the existing standalone script's function -- no FAO-56 or Kc
+    math is duplicated here.
+
+    This step only runs if BOTH of its required inputs already exist:
+      - data/processed/muthukur_combined_feature_table.csv
+      - data/processed/muthukur_mango_phenology_calendar.csv
+
+    Those two files are still produced by their own standalone scripts
+    (src/features/build_feature_table.py and
+    src/phenology/mango_phenology_calendar.py respectively) -- this pipeline
+    does not build them. If either is missing, this step prints a clear
+    explanation and returns without raising, so a missing optional input
+    never stops the rest of the pipeline (the existing constant-Kc FAO-56
+    behavior and every other step are unaffected either way).
+    """
+    config = get_config()
+    feature_table_path = config.path("combined_feature_table_csv")
+    phenology_calendar_path = config.path("mango_phenology_calendar_csv")
+    output_path = config.path("fao56_phenology_water_balance_csv")
+
+    print(f"Required input 1 (combined feature table): {feature_table_path}")
+    print(f"Required input 2 (mango phenology calendar): {phenology_calendar_path}")
+    print(f"Output:                                      {output_path}")
+    print()
+
+    missing = [p for p in (feature_table_path, phenology_calendar_path) if not p.exists()]
+    if missing:
+        print("Skipping phenology-aware FAO-56 water balance step.")
+        print("Missing required input file(s):")
+        for path in missing:
+            print(f"  - {path}")
+        print("Build the missing input(s) first, then re-run this step:")
+        print("  python src/features/build_feature_table.py")
+        print("  python src/phenology/mango_phenology_calendar.py")
+        log.warning("Phenology-aware FAO-56 step skipped: missing input(s) %s", missing)
+        return
+
+    success = fao56_phenology_water_balance.build_fao56_phenology_water_balance()
+    if success:
+        print(f"Phenology-aware FAO-56 water balance written to: {output_path}")
+        log.info("Phenology-aware FAO-56 water balance step succeeded.")
+    else:
+        print("Phenology-aware FAO-56 water balance step did not complete successfully.")
+        print("See the messages above for details. The rest of the pipeline will continue.")
+        log.warning("Phenology-aware FAO-56 water balance step reported failure (see messages above).")
 
 
 PIPELINE_STEPS = [
@@ -41,11 +94,13 @@ PIPELINE_STEPS = [
     ("Historical mango risk engine", historical_risk_engine.main),
     ("Open-Meteo recent/forecast weather", fetch_open_meteo.main),
     ("Forecast mango risk engine", open_meteo_risk_engine.main),
+    ("Phenology-aware FAO-56 water balance (optional)", run_phenology_aware_fao56_step),
 ]
 
 RISK_ONLY_STEPS = [
     ("Historical mango risk engine", historical_risk_engine.main),
     ("Forecast mango risk engine", open_meteo_risk_engine.main),
+    ("Phenology-aware FAO-56 water balance (optional)", run_phenology_aware_fao56_step),
 ]
 
 
