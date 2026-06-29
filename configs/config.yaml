@@ -119,6 +119,7 @@ paths:
   fao56_phenology_water_balance_csv: "data/processed/muthukur_fao56_phenology_water_balance.csv"
   fao56_model_comparison_csv: "data/processed/muthukur_fao56_model_comparison.csv"
   fao56_model_comparison_summary_md: "data/processed/muthukur_fao56_model_comparison_summary.md"
+  pipeline_run_metadata_json: "data/processed/pipeline_run_metadata.json"
 
 risk_thresholds:
   classification:

@@ -12,6 +12,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from src.utils.config import get_config
 from src.utils.soil_factor import soil_factor_label
+from src.utils.pipeline_metadata import load_metadata_json
 from src.utils.validation import (
     validate_risk_data,
     validate_soil_data,
@@ -36,6 +37,7 @@ COMBINED_FEATURE_TABLE_PATH = config.path("combined_feature_table_csv")
 FAO56_WATER_BALANCE_PATH = config.path("fao56_water_balance_csv")
 PHENOLOGY_CALENDAR_PATH = config.path("mango_phenology_calendar_csv")
 FAO56_PHENOLOGY_WATER_BALANCE_PATH = config.path("fao56_phenology_water_balance_csv")
+PIPELINE_METADATA_PATH = config.path("pipeline_run_metadata_json")
 
 
 st.set_page_config(
@@ -298,6 +300,56 @@ def render_status_badge(label: str, path: Path) -> None:
     st.sidebar.markdown(
         f"{indicator} **{label}** — updated {status['modified'].strftime('%Y-%m-%d %H:%M')}"
     )
+
+
+def _format_metadata_timestamp(iso_timestamp: str | None) -> str:
+    """Format an ISO-8601 UTC timestamp from the metadata JSON for display."""
+    if not iso_timestamp:
+        return "Unknown"
+    try:
+        parsed = dt.datetime.strptime(iso_timestamp, "%Y-%m-%dT%H:%M:%SZ")
+        return f"{parsed.strftime('%Y-%m-%d %H:%M')} UTC"
+    except ValueError:
+        return iso_timestamp
+
+
+def render_data_freshness_section() -> None:
+    """
+    Render the "near-real-time" data freshness summary: when the pipeline
+    last ran and how current each key data source is, read from
+    data/processed/pipeline_run_metadata.json (written by
+    src/pipeline/run_pipeline.py). Never raises -- if the metadata file is
+    missing or unreadable, shows a friendly message instead.
+    """
+    st.sidebar.subheader("Data freshness")
+
+    metadata = load_metadata_json(PIPELINE_METADATA_PATH)
+
+    if metadata is None:
+        st.sidebar.info("Run `python main.py --skip-fetch` to generate pipeline metadata.")
+        return
+
+    status = metadata.get("status", "unknown")
+    status_indicator = "🟢" if status == "success" else "🔴"
+    st.sidebar.markdown(
+        f"{status_indicator} **Last pipeline run:** "
+        f"{_format_metadata_timestamp(metadata.get('run_completed_at'))} ({metadata.get('pipeline_mode', 'unknown mode')})"
+    )
+
+    latest_dates = metadata.get("latest_dates", {})
+    freshness_rows = [
+        ("Weather risk", latest_dates.get("weather_risk_latest_date")),
+        ("Open-Meteo forecast", latest_dates.get("open_meteo_forecast_latest_date")),
+        ("Sentinel-2 observation", latest_dates.get("sentinel2_daily_latest_date")),
+        ("Phenology-aware FAO-56", latest_dates.get("fao56_phenology_water_balance_latest_date")),
+        ("Model comparison", latest_dates.get("fao56_model_comparison_latest_date")),
+    ]
+    for label, latest_date in freshness_rows:
+        st.sidebar.caption(f"{label}: {latest_date if latest_date else 'not available'}")
+
+    missing_warnings = metadata.get("missing_file_warnings", [])
+    if missing_warnings:
+        st.sidebar.warning(f"{len(missing_warnings)} expected file(s) missing — see Raw Data / status badges above.")
 
 
 def simulate_weather_risk(
@@ -565,8 +617,15 @@ render_status_badge("Mango phenology calendar (processed)", PHENOLOGY_CALENDAR_P
 render_status_badge("Phenology-aware FAO-56 water balance (processed)", FAO56_PHENOLOGY_WATER_BALANCE_PATH)
 
 st.sidebar.divider()
+render_data_freshness_section()
+
+st.sidebar.divider()
 st.sidebar.caption(
     "Future prediction = Open-Meteo weather forecast + risk rules, not a trained ML model yet."
+)
+st.sidebar.caption(
+    "This is a near-real-time digital twin: forecast weather updates often, Sentinel-2 every few "
+    "days, NASA POWER historical data can lag, and SoilGrids is mostly static."
 )
 
 

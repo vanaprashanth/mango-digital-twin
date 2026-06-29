@@ -33,6 +33,11 @@ from src.risk import historical_risk_engine, open_meteo_risk_engine
 from src.water_balance import fao56_phenology_water_balance
 from src.utils.config import get_config
 from src.utils.logger import get_logger
+from src.utils.pipeline_metadata import (
+    build_pipeline_metadata,
+    write_metadata_json,
+    utc_now,
+)
 
 log = get_logger(__name__)
 
@@ -135,6 +140,36 @@ def run_steps(steps: list[tuple[str, callable]]) -> bool:
     return True
 
 
+def write_pipeline_metadata(
+    run_started_at,
+    run_completed_at,
+    pipeline_mode: str,
+    status: str,
+) -> None:
+    """
+    Build and write data/processed/pipeline_run_metadata.json after a
+    pipeline run, whether it succeeded or failed. This is best-effort: if
+    metadata collection itself raises for any reason, it is logged as a
+    warning and swallowed so a metadata problem never turns a successful
+    (or already-failed) pipeline run into a crashed one.
+    """
+    try:
+        config = get_config()
+        metadata = build_pipeline_metadata(
+            run_started_at=run_started_at,
+            run_completed_at=run_completed_at,
+            pipeline_mode=pipeline_mode,
+            status=status,
+        )
+        output_path = config.path("pipeline_run_metadata_json")
+        write_metadata_json(metadata, output_path)
+        print(f"Pipeline run metadata written to: {output_path}")
+        log.info("Pipeline run metadata written to %s", output_path)
+    except Exception as exc:
+        log.warning("Could not write pipeline run metadata: %s", exc)
+        print(f"Warning: could not write pipeline run metadata ({exc}).")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run the Sensor-Free Mango Digital Twin data pipeline."
@@ -154,7 +189,9 @@ def main():
     print(f"Mode: {mode_label}")
     print()
 
+    run_started_at = utc_now()
     success = run_steps(steps)
+    run_completed_at = utc_now()
 
     print("=" * 70)
     if success:
@@ -164,6 +201,15 @@ def main():
     else:
         log.error("Pipeline stopped early due to an error.")
         print("Pipeline stopped early due to an error. See traceback above.")
+
+    write_pipeline_metadata(
+        run_started_at=run_started_at,
+        run_completed_at=run_completed_at,
+        pipeline_mode=mode_label,
+        status="success" if success else "failed",
+    )
+
+    if not success:
         sys.exit(1)
 
 
