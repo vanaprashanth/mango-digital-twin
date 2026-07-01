@@ -75,10 +75,11 @@ SOURCE_FILE_PATH_KEYS: dict[str, str] = {
 }
 
 # Processed/output files this project's risk engines and standalone
-# water-balance/phenology/comparison scripts produce. Logical name ->
-# configs/config.yaml path key. `fao56_model_comparison` is optional: it is
-# a standalone script, not part of the automated pipeline, so it may not
-# exist yet on a given machine -- that is expected, not an error.
+# scripts produce. Logical name -> configs/config.yaml path key.
+# All of these are produced by the unified freshness-aware pipeline
+# (python main.py --skip-fetch) but may not yet exist on a first run
+# or if a required upstream input is still missing -- that is handled
+# gracefully (file missing → row_count = None, no error).
 OUTPUT_FILE_PATH_KEYS: dict[str, str] = {
     "historical_risk": "historical_risk_csv",
     "forecast_risk": "forecast_risk_csv",
@@ -89,6 +90,7 @@ OUTPUT_FILE_PATH_KEYS: dict[str, str] = {
     "mango_phenology_calendar": "mango_phenology_calendar_csv",
     "fao56_phenology_water_balance": "fao56_phenology_water_balance_csv",
     "fao56_model_comparison": "fao56_model_comparison_csv",
+    "forecast_aware_irrigation_advisory": "forecast_aware_irrigation_advisory_csv",
 }
 
 # Files to inspect for "latest available date" -- the freshness signal that
