@@ -25,6 +25,10 @@ Working and verified on the local Windows/VS Code setup:
 10. README and project structure cleanup
 11. `main.py` pipeline runner with `--skip-fetch`
 12. Unified, freshness-aware pipeline orchestration — `python main.py --skip-fetch` is now the single command that regenerates/refreshes every downstream output (historical risk, forecast risk, Sentinel-2 daily aggregation, the combined feature table, the mango phenology calendar, both FAO-56 water-balance models, and the FAO-56 model comparison) using RUN / SKIP_FRESH / SKIP_MISSING_INPUT logic, with per-step results recorded in `pipeline_run_metadata.json`
+13. Standalone forecast-aware irrigation advisory module (`src/advisory/forecast_aware_irrigation.py`) — combines phenology-aware FAO-56 water stress (Ks, water stress level, root-zone depletion), Open-Meteo forecast daily rainfall, and mango crop stage sensitivity into rule-based farmer-facing decision support; output: `data/processed/muthukur_forecast_aware_irrigation_advisory.csv`
+14. Pipeline integration for the advisory — the advisory is the seventh freshness-aware step in `src/pipeline/run_pipeline.py`; `python main.py --skip-fetch` now regenerates it automatically
+15. Irrigation Advisory dashboard page — sidebar page in `app/streamlit_app.py` showing the latest advisory action, priority callout, FAO-56 / forecast / crop-stage context, decision-rule table, technical details, and limitations
+16. Farmer-facing decision-support layer — first feature in the project that converts monitoring signals into actionable irrigation guidance (not AI/ML; rule-based; supports but does not replace farmer judgment)
 
 **Important clarification, preserved throughout this roadmap:** the "future
 prediction" shown today is *not* a trained ML model. It is:
@@ -215,6 +219,36 @@ downloads):
    for every freshness-aware step, alongside its existing freshness
    metadata. No Airflow/Prefect/Dagster/database/scheduler was introduced —
    this remains a local, dependency-ordered Python script.
+6. [DONE] **Standalone forecast-aware irrigation advisory module**
+   (`src/advisory/forecast_aware_irrigation.py`) — rule-based
+   decision-support module combining phenology-aware FAO-56 water stress
+   (Ks, water-stress level Low/Medium/High, root-zone depletion, crop
+   stage), Open-Meteo forecast daily rainfall, and mango stage sensitivity
+   (Fruit set and Fruit development treated as critical stages). Produces a
+   single-row advisory snapshot with `advisory_action`,
+   `advisory_priority`, `advisory_reason`, and `advisory_limitations`;
+   output: `data/processed/muthukur_forecast_aware_irrigation_advisory.csv`.
+   Standalone command: `python src/advisory/forecast_aware_irrigation.py`.
+7. [DONE] **Pipeline integration for the advisory output** — the advisory
+   is the seventh freshness-aware downstream step in
+   `src/pipeline/run_pipeline.py`, with `input_keys` =
+   `["fao56_phenology_water_balance_csv", "forecast_risk_csv"]` and
+   `output_keys` = `["forecast_aware_irrigation_advisory_csv"]`.
+   `python main.py --skip-fetch` now regenerates the advisory whenever
+   the phenology-aware water balance or forecast risk CSV is newer than
+   the last advisory output.
+8. [DONE] **Irrigation Advisory dashboard page** — sidebar page in
+   `app/streamlit_app.py` (between FAO-56 Model Comparison and What-if
+   Simulator) showing the latest advisory action and priority callout,
+   top-8 status metrics, three-column FAO-56 / forecast / crop-stage
+   context panel, full decision-rule table, technical details, and
+   expandable limitations; reads
+   `data/processed/muthukur_forecast_aware_irrigation_advisory.csv`.
+9. [DONE] **Farmer-facing decision-support layer** — first feature in the
+   project that converts monitoring signals into actionable irrigation
+   guidance for a farmer. Five possible advisory actions ranging from "No
+   irrigation needed now" to "Irrigate now or apply partial irrigation."
+   Rule-based, not AI/ML. Should support, not replace, farmer judgment.
 
 Kc values used (first-pass assumptions, not field-calibrated):
 

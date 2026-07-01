@@ -32,7 +32,7 @@ same codebase could point at a different orchard by editing that one file.
 
 ## Current Dashboard Pages
 
-The Streamlit dashboard (`streamlit run app/streamlit_app.py`) has eleven
+The Streamlit dashboard (`streamlit run app/streamlit_app.py`) has thirteen
 pages, navigated from the sidebar:
 
 1. **Overview & Map** — latest digital twin status, study-area map, latest
@@ -58,9 +58,19 @@ pages, navigated from the sidebar:
    Kc/ET0/ETc/depletion/Ks trends, stage-wise breakdowns, and a labeled
    prototype comparison against the constant-Kc Water Balance page (see
    below).
-10. **What-if Simulator** — sliders to test rainfall/temperature/humidity
-   changes and see the simulated risk impact.
-11. **Raw Data** — expandable raw/processed tables for every data source.
+10. **FAO-56 Model Comparison** — day-by-day comparison of the constant-Kc
+    and phenology-aware FAO-56 outputs: ETc differences, water-stress-level
+    changes, and stage-wise breakdowns; reads
+    `data/processed/muthukur_fao56_model_comparison.csv`.
+11. **Irrigation Advisory** — the Forecast-Aware Irrigation Advisory:
+    latest advisory action and priority callout (High / Medium / Low),
+    FAO-56 water-stress context, forecast rainfall context, decision-rule
+    table, technical details, limitations, and the raw single-row advisory
+    snapshot; reads
+    `data/processed/muthukur_forecast_aware_irrigation_advisory.csv`.
+12. **What-if Simulator** — sliders to test rainfall/temperature/humidity
+    changes and see the simulated risk impact.
+13. **Raw Data** — expandable raw/processed tables for every data source.
 
 ## Current Generated Data Files
 
@@ -342,6 +352,67 @@ near-real-time, one-command pipeline.
 
 ---
 
+## Forecast-Aware Irrigation Advisory Milestone (new)
+
+`src/advisory/forecast_aware_irrigation.py` is a standalone module that
+converts the project's water-stress monitoring into farmer-facing irrigation
+decision support for the first time.
+
+- **Inputs:**
+  - `data/processed/muthukur_fao56_phenology_water_balance.csv` (phenology-aware
+    FAO-56 water balance: latest mango stage, Ks coefficient, root-zone
+    depletion, water stress level, Kc, ET0, ETc)
+  - `data/processed/muthukur_open_meteo_forecast_risk.csv` (Open-Meteo forecast
+    data, used for daily rainfall totals)
+- **Output:** `data/processed/muthukur_forecast_aware_irrigation_advisory.csv` —
+  a single-row snapshot with the advisory timestamp, current FAO-56 date, mango
+  stage, water-stress status (Ks, level, ETc, root-zone depletion), forecast
+  resolution and rainfall, and the advisory decision: `advisory_action`,
+  `advisory_priority` (High / Medium / Low), `advisory_reason`, and
+  `advisory_limitations`.
+- **Method:** a rule-based decision engine combining three signals:
+  1. Phenology-aware FAO-56 water stress level (Low / Medium / High) and Ks from
+     the latest available row.
+  2. Open-Meteo forecast daily rainfall for the next 24 hours (6 h and 12 h
+     totals cannot be derived from daily-resolution data).
+  3. Mango crop stage — Fruit set and Fruit development are treated as critical
+     stages where even uncertain rain warrants partial irrigation.
+- **Advisory actions (farmer-facing):**
+  - *No irrigation needed now* — water stress is Low, regardless of forecast.
+  - *Wait and monitor* — Medium stress with forecast rain ≥ 2 mm.
+  - *Monitor closely; consider irrigation soon* — Medium stress, low forecast rain.
+  - *Delay irrigation and recheck after rainfall* — High stress but ≥ 5 mm rain
+    forecast, or High stress + non-critical stage with 2–5 mm uncertain rain.
+  - *Apply partial irrigation and recheck* — High stress + critical crop stage
+    (Fruit set or Fruit development) with 2–5 mm uncertain rain.
+  - *Irrigate now or apply partial irrigation* — High stress with < 2 mm forecast
+    rain, or forecast data unavailable.
+- **Dashboard page:** new **Irrigation Advisory** sidebar page showing the latest
+  advisory action and priority (colour-coded by `st.error` / `st.warning` /
+  `st.success`), top-8 status metrics, a three-column FAO-56 / forecast /
+  crop-stage context panel, the full decision-rule table, technical details, and
+  an expandable limitations section; reads
+  `data/processed/muthukur_forecast_aware_irrigation_advisory.csv`.
+- **Pipeline integration:** the seventh freshness-aware step in
+  `src/pipeline/run_pipeline.py`. `python main.py --skip-fetch` now regenerates
+  the advisory output whenever the phenology-aware FAO-56 water balance or the
+  forecast risk CSV is newer than the last advisory output.
+- **Why it matters:** converts water-stress monitoring into actionable farmer
+  guidance; prevents unnecessary irrigation when rain is expected in the next
+  24 hours; gives context-aware recommendations that change by crop stage.
+- **Limitations:**
+  - Rule-based logic only — not AI or machine learning.
+  - Forecast at daily resolution: 6 h and 12 h rainfall totals are not computable;
+    thresholds use the next-24-hour total.
+  - No soil-moisture sensor validation.
+  - No irrigation-event history (water balance is rainfed-only depletion).
+  - No yield or outcome validation.
+  - Rainfall forecasts can change; re-run `python main.py --skip-fetch` before
+    acting on the advisory.
+  - This advisory should support, not replace, farmer judgment and local knowledge.
+
+---
+
 ## What Has Not Been Done Yet
 
 - No local/cultivar-specific calibration of the phenology-aware Kc values —
@@ -358,36 +429,27 @@ near-real-time, one-command pipeline.
   computed; no satellite images are saved).
 - No field/yield validation yet (risk scores and both FAO-56 outputs have
   not been checked against real orchard outcomes).
-- No real scheduler yet — as of the unified freshness-aware pipeline
-  orchestration milestone above, `python main.py --skip-fetch` is a single
-  command that can regenerate every downstream output, but nothing
-  triggers that command automatically; every run is still manually
-  invoked.
+- No real scheduler yet — `python main.py --skip-fetch` is a single command
+  that can regenerate every downstream output, but nothing triggers that
+  command automatically; every run is still manually invoked.
 - No database yet — all data still lives in local CSV/JSON files.
-- No FAO-56 Model Comparison dashboard page yet — the comparison script and
-  its output CSV exist and are wired into the pipeline, but there is no
-  dashboard page presenting it yet.
 
 ## Recommended Next Steps
 
-1. **Documentation checkpoint** — this milestone summary, plus the updated
-   `README.md`, `ROADMAP.md`, and `DEVELOPMENT.md`, freeze a clear record of
-   the unified freshness-aware pipeline orchestration milestone.
-2. **Optional Git commit** — commit this stable state as a checkpoint that
-   can be returned to if later changes need to be rolled back.
-3. **Add a real scheduler** for unattended/recurring pipeline runs, now
+1. **Optional Git commit** — commit this stable state as a checkpoint for
+   the forecast-aware irrigation advisory milestone, so it can be returned
+   to if later changes need to be rolled back.
+2. **Add a real scheduler** for unattended/recurring pipeline runs, now
    that the pipeline itself is unified and freshness-aware and only needs
    to be triggered.
-4. **Add the FAO-56 Model Comparison dashboard page**, now that the
-   comparison script and output CSV exist and are wired into the pipeline.
-5. **Calibrate the phenology-aware Kc values** against local or
+3. **Calibrate the phenology-aware Kc values** against local or
    cultivar-specific data as it becomes available.
-6. **Add irrigation-event, runoff, and deep-percolation tracking** to the
+4. **Add irrigation-event, runoff, and deep-percolation tracking** to the
    water balance, moving it past a rainfed-only prototype.
-7. **Later, prepare cloud deployment** — once the local system and
+5. **Later, prepare cloud deployment** — once the local system and
    phenology work are stable, move storage, scheduling, and the dashboard
    to the cloud (GCP, as planned in `ROADMAP.md`).
-8. **Later, explore IndiaAI only if GPU-heavy work is needed** — for example,
+6. **Later, explore IndiaAI only if GPU-heavy work is needed** — for example,
    if a future ML or deep-learning model genuinely requires GPU compute at
    scale.
 

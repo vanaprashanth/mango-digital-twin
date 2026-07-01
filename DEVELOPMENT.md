@@ -30,10 +30,10 @@ layers:
 2. **Freshness-aware downstream steps**, run in dependency order: Sentinel-2
    daily aggregation, the combined feature table, the mango phenology
    calendar, the constant-Kc FAO-56 water balance, the phenology-aware
-   FAO-56 water balance, and the FAO-56 model comparison. Each step calls
-   the corresponding standalone script's own existing build function
-   directly — no scientific/model logic is duplicated in the pipeline
-   runner.
+   FAO-56 water balance, the FAO-56 model comparison, and the
+   forecast-aware irrigation advisory. Each step calls the corresponding
+   standalone script's own existing build function directly — no
+   scientific/model logic is duplicated in the pipeline runner.
 
 Each downstream step prints one of four statuses, also recorded per-step in
 `data/processed/pipeline_run_metadata.json`:
@@ -99,18 +99,21 @@ weather + soil + vegetation view if
 `data/processed/muthukur_combined_feature_table.csv` exists (see step 7.9),
 the **Water Balance** page, which shows the FAO-56 soil-water balance
 output if `data/processed/muthukur_fao56_water_balance.csv` exists (see
-step 7.11), and the **Phenology Water Balance** page, which shows the
+step 7.11), the **Phenology Water Balance** page, which shows the
 phenology-aware FAO-56 output if
 `data/processed/muthukur_fao56_phenology_water_balance.csv` exists (see
-step 7.14) — each page shows a friendly warning with the exact command to
-run if its own file doesn't exist yet. As of the unified pipeline
+step 7.14), and the **Irrigation Advisory** page, which shows the
+forecast-aware irrigation advisory if
+`data/processed/muthukur_forecast_aware_irrigation_advisory.csv` exists
+(see step 7.16) — each page shows a friendly warning with the exact command
+to run if its own file doesn't exist yet. As of the unified pipeline
 orchestration milestone, `python main.py --skip-fetch` (see step 2 above)
 now regenerates **all** of these output CSVs automatically — the combined
 feature table, the constant-Kc FAO-56 script, the mango phenology
-calendar, and the phenology-aware FAO-56 script no longer need to be run
-manually before their dashboard pages show data, as long as their own
-required inputs (ultimately, the raw weather/soil/Sentinel-2 data) already
-exist on disk.
+calendar, the phenology-aware FAO-56 script, and the forecast-aware
+irrigation advisory no longer need to be run manually before their
+dashboard pages show data, as long as their own required inputs
+(ultimately, the raw weather/soil/Sentinel-2 data) already exist on disk.
 
 ## 5. Run the tests
 
@@ -137,7 +140,7 @@ Useful to run before committing changes or after editing several files.
 After steps 1–6 above, you should see:
 - Step 2 prints a console summary ending with `Core pipeline (fetch/risk)
   finished successfully.`, followed by a `RUN` / `SKIP_FRESH` /
-  `SKIP_MISSING_INPUT` / `FAILED` line for each of the six freshness-aware
+  `SKIP_MISSING_INPUT` / `FAILED` line for each of the seven freshness-aware
   downstream steps, and finally `Pipeline run metadata written to:
   data/processed/pipeline_run_metadata.json`.
 - Step 5 ends with all tests showing `PASSED` and a line like `24 passed
@@ -441,6 +444,68 @@ regenerates this script's output CSV automatically whenever its required
 inputs already exist, so manually running step 7.13 first is no longer
 required.
 
+### 7.16 Generate the forecast-aware irrigation advisory (standalone)
+
+Once the phenology-aware FAO-56 water balance and the Open-Meteo forecast
+risk CSV both exist, you can generate the irrigation advisory directly — no
+Earth Engine connection needed:
+
+```bash
+python src/advisory/forecast_aware_irrigation.py
+```
+
+Inputs:
+- `data/processed/muthukur_fao56_phenology_water_balance.csv`
+- `data/processed/muthukur_open_meteo_forecast_risk.csv`
+
+Output: `data/processed/muthukur_forecast_aware_irrigation_advisory.csv`
+
+The script reads the **latest row** from the phenology-aware water balance
+(Ks coefficient, root-zone depletion, water stress level, mango stage, Kc,
+ET0, ETc) and looks up the first forecast day's daily rainfall from the
+Open-Meteo forecast CSV. It applies a rule-based decision engine — combining
+water stress level (Low / Medium / High), Ks, forecast daily rainfall, and
+mango stage sensitivity (Fruit set and Fruit development are treated as
+critical stages) — and writes a single-row output CSV with the advisory
+action, priority, reason, and limitations.
+
+The advisory is printed to the console as a formatted summary when run
+directly. It is also regenerated automatically by
+`python main.py --skip-fetch` (step 2 above) as the seventh freshness-aware
+downstream step, whenever either input is newer than the last advisory.
+
+**Note on forecast resolution:** only daily forecast data is available from
+Open-Meteo in this project. 6-hour and 12-hour rainfall totals cannot be
+computed; decision thresholds are applied to the next-24-hour total. Rain
+probability is also not in the current Open-Meteo daily output.
+
+### 7.17 Irrigation Advisory dashboard page
+
+Once the advisory CSV exists, the dashboard's **Irrigation Advisory** sidebar
+page shows it directly — no extra command needed beyond step 4 above:
+
+```bash
+streamlit run app/streamlit_app.py
+```
+
+The page is visible in the sidebar between **FAO-56 Model Comparison** and
+**What-if Simulator**. It includes:
+- A priority callout (green / amber / red, matching Low / Medium / High)
+  showing the advisory action and reason.
+- Top-8 status metrics: generated timestamp, FAO-56 date, mango stage,
+  water stress level, Ks, ETc, root-zone depletion, and forecast rain.
+- A three-column context panel (FAO-56 water balance / forecast inputs /
+  crop stage).
+- The full eight-row decision-rule reference table.
+- Technical details (FAO-56 parameters and forecast inputs) in an expander.
+- An expandable limitations section parsing each limitation from the CSV.
+- The raw single-row advisory snapshot in an expander.
+
+It carries an explicit disclaimer that this is rule-based decision support,
+not AI or machine learning, and that it should support but not replace farmer
+judgment and local knowledge. It is read-only and does not change `main.py`
+or any other dashboard page.
+
 ### 7.15 What's configured so far
 
 `configs/config.yaml` now has a `remote_sensing` section with the study
@@ -519,7 +584,7 @@ a later phase.
   `data/processed/muthukur_fao56_phenology_water_balance.csv`. Does not
   modify the original constant-Kc script or CSV. Shown on the dashboard's
   **Phenology Water Balance** page (step 7.14). As of the unified pipeline
-  orchestration milestone, this is one of six freshness-aware steps in
+  orchestration milestone, this is one of seven freshness-aware steps in
   `src/pipeline/run_pipeline.py` that call each script's own existing build
   function directly, with no math duplicated — `python main.py
   --skip-fetch` and full `python main.py` both regenerate its output CSV
@@ -531,7 +596,22 @@ a later phase.
   phenology-aware FAO-56 outputs day by day (ETc differences, stress-level
   changes, stage-wise breakdowns), writing
   `data/processed/muthukur_fao56_model_comparison.csv` and a markdown
-  summary. As of the unified pipeline orchestration milestone, this is the
-  last of the six freshness-aware steps in `run_pipeline.py`, regenerated
-  automatically by `python main.py --skip-fetch` whenever both FAO-56
-  outputs already exist. No dashboard page for this comparison exists yet.
+  summary. This is the sixth freshness-aware step in `run_pipeline.py`,
+  regenerated automatically by `python main.py --skip-fetch` whenever both
+  FAO-56 outputs already exist. Its output is shown on the dashboard's
+  **FAO-56 Model Comparison** sidebar page.
+- `src/advisory/forecast_aware_irrigation.py` (step 7.16) — the
+  standalone Forecast-Aware Irrigation Advisory module. Reads the latest
+  row from the phenology-aware FAO-56 water balance and the current
+  Open-Meteo forecast risk CSV, applies a rule-based decision engine that
+  combines FAO-56 water-stress level (Low / Medium / High), Ks coefficient,
+  mango crop stage, and forecast daily rainfall to produce a single-row
+  advisory snapshot. This is the seventh and final freshness-aware step in
+  `run_pipeline.py`, regenerated automatically by
+  `python main.py --skip-fetch` whenever either input is newer than the
+  last advisory output. Output:
+  `data/processed/muthukur_forecast_aware_irrigation_advisory.csv`. Known
+  limitations: rule-based (not AI/ML), daily forecast resolution only
+  (6 h / 12 h totals unavailable), no soil-moisture sensor validation, no
+  irrigation-event history, no yield validation. Advisory should support
+  but not replace farmer judgment.

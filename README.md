@@ -45,6 +45,8 @@ The current MVP includes:
 - A Water Balance dashboard page showing the FAO-56 output, marked as a simplified rainfed prototype
 - A mango phenology calendar (regional, generic growth-stage dates) and a phenology-aware FAO-56 standalone script that assigns crop coefficient (Kc) by growth stage instead of a constant value
 - A Phenology Water Balance dashboard page showing the phenology-aware FAO-56 output, including a prototype comparison against the constant-Kc Water Balance page
+- A standalone FAO-56 model comparison script (`src/validation/compare_fao56_models.py`) comparing the constant-Kc and phenology-aware FAO-56 outputs day by day (ETc differences, water-stress-level changes, stage-wise breakdowns), wired into the unified pipeline, with an FAO-56 Model Comparison dashboard page
+- A Forecast-Aware Irrigation Advisory module (`src/advisory/forecast_aware_irrigation.py`) that combines phenology-aware FAO-56 water stress (Ks coefficient, root-zone depletion, water stress level) with Open-Meteo forecast rainfall and mango crop stage sensitivity to produce farmer-facing decision support — five possible advisory actions: No irrigation needed now / Delay irrigation and recheck / Apply partial irrigation and recheck / Irrigate now or apply partial irrigation / Wait and monitor. Wired into the unified pipeline as the seventh freshness-aware step, with an Irrigation Advisory dashboard page. This is rule-based decision support, not AI/ML, and should support but not replace farmer judgment.
 
 ---
 
@@ -252,11 +254,11 @@ calls. It runs in two layers every time:
    recomputed from the cached NASA POWER / Open-Meteo / SoilGrids CSVs.
 2. **Freshness-aware downstream steps** — Sentinel-2 daily aggregation, the
    combined feature table, the mango phenology calendar, the constant-Kc
-   FAO-56 water balance, the phenology-aware FAO-56 water balance, and the
-   FAO-56 model comparison are each regenerated or refreshed automatically,
-   in that dependency order, using the existing standalone scripts' own
-   build functions — no scientific logic is duplicated in the pipeline
-   runner.
+   FAO-56 water balance, the phenology-aware FAO-56 water balance, the
+   FAO-56 model comparison, and the forecast-aware irrigation advisory are
+   each regenerated or refreshed automatically, in that dependency order,
+   using the existing standalone scripts' own build functions — no
+   scientific logic is duplicated in the pipeline runner.
 
 Each downstream step uses **freshness-aware RUN / SKIP_FRESH logic**: if a
 step's output file already exists and is newer than every one of its
@@ -467,7 +469,49 @@ irrigation events are not yet included. See `ROADMAP.md` and
 
 ---
 
-## 11. Dashboard Sections
+## 11. Forecast-Aware Irrigation Advisory (Standalone Module)
+
+In addition to the water-balance and phenology models above, the project now
+has a standalone module that converts water-stress monitoring into
+farmer-facing irrigation decision support:
+
+- **Advisory module** — `src/advisory/forecast_aware_irrigation.py` reads
+  the latest row from the phenology-aware FAO-56 water balance
+  (`data/processed/muthukur_fao56_phenology_water_balance.csv`) and the
+  current Open-Meteo forecast data
+  (`data/processed/muthukur_open_meteo_forecast_risk.csv`) to produce a
+  single-row advisory snapshot. Run it directly:
+  ```bash
+  python src/advisory/forecast_aware_irrigation.py
+  ```
+  or let `python main.py --skip-fetch` generate it automatically as the
+  seventh freshness-aware downstream step.
+- **Output:** `data/processed/muthukur_forecast_aware_irrigation_advisory.csv`
+  — one row with mango stage, Ks, water-stress level, ETc, root-zone
+  depletion, forecast rainfall, and the advisory decision fields
+  (`advisory_action`, `advisory_priority`, `advisory_reason`,
+  `advisory_limitations`).
+- **Decision logic:** rule-based, combining three signals — (1) FAO-56
+  water stress level (Low / Medium / High) and Ks, (2) Open-Meteo forecast
+  daily rainfall for the next 24 hours, and (3) mango crop stage (Fruit set
+  and Fruit development are treated as critical stages). Five possible
+  farmer-facing advisory actions, ranging from "No irrigation needed now"
+  to "Irrigate now or apply partial irrigation."
+- **Dashboard:** the **Irrigation Advisory** sidebar page shows the advisory
+  action and priority callout, top-8 status metrics, FAO-56 / forecast /
+  crop-stage context, the full decision-rule table, technical details, and
+  limitations.
+- **Important notes:** this is rule-based decision support, not AI or
+  machine learning. Forecast is at daily resolution only — 6 h and 12 h
+  rainfall totals cannot be derived. The advisory should support, not
+  replace, farmer judgment and local knowledge.
+
+The original constant-Kc FAO-56 script, the phenology-aware FAO-56 script,
+and all their outputs are unchanged by this addition.
+
+---
+
+## 12. Dashboard Sections
 
 The Streamlit dashboard uses sidebar navigation with one page per topic, plus a
 data source status panel (last-updated badges for each raw/processed file)
@@ -482,6 +526,8 @@ in the sidebar:
 - **Water Balance** — FAO-56 soil-water balance output: latest ET0, ETc, root-zone depletion, Ks water-stress coefficient, TAW, RAW; ET0+ETc, rainfall+ETc, depletion (with RAW/TAW reference lines), and Ks trend charts; a water-stress-level count chart; interpretation notes; and the raw FAO-56 table. Carries an explicit disclaimer that this is a simplified rainfed prototype.
 - **Mango Phenology** — current growth stage, stage descriptions and sensitivities, stage counts and timeline, monthly stage distribution.
 - **Phenology Water Balance** — the phenology-aware FAO-56 output (`data/processed/muthukur_fao56_phenology_water_balance.csv`): latest date, mango stage, Kc, ET0, ETc, root-zone depletion, Ks, and water-stress level; Kc, ET0/ETc, depletion, and Ks trend charts; water-stress-level counts and stage-wise water-stress/ETc breakdowns; a labeled prototype comparison of ETc and water-stress counts against the constant-Kc Water Balance page where that output exists; interpretation notes on how Kc and water sensitivity change by stage; and the raw table. Carries an explicit disclaimer that this is a simplified, assumption-based, non-field-calibrated prototype with no irrigation events modeled yet.
+- **FAO-56 Model Comparison** — day-by-day comparison of the constant-Kc and phenology-aware FAO-56 outputs: ETc differences, water-stress-level changes, stage-wise breakdowns, and summary statistics; reads `data/processed/muthukur_fao56_model_comparison.csv`.
+- **Irrigation Advisory** — the Forecast-Aware Irrigation Advisory: latest advisory action and priority callout (colour-coded High / Medium / Low), top-8 status metrics, three-column FAO-56 / forecast / crop-stage context panel, full decision-rule table, technical details, limitations, and the raw single-row advisory snapshot; reads `data/processed/muthukur_forecast_aware_irrigation_advisory.csv`.
 - **What-if Simulator** — rainfall/temperature/humidity sliders, simulated risk, scenario explanation
 - **Raw Data** — expandable raw/processed tables (historical, forecast, SoilGrids, Sentinel-2 daily vegetation)
 
@@ -489,7 +535,7 @@ See `ROADMAP.md` for the full multi-phase development plan (local PC → cloud �
 
 ---
 
-## 12. What-if Simulator
+## 13. What-if Simulator
 
 The what-if simulator allows the user to test changes in:
 
@@ -513,7 +559,7 @@ This simulates wet and humid disease-friendly conditions.
 
 ---
 
-## 13. Current Project Status
+## 14. Current Project Status
 
 Completed:
 
@@ -545,7 +591,8 @@ Completed:
 - Phenology-aware FAO-56 standalone script (`src/water_balance/fao56_phenology_water_balance.py`) joins the combined feature table with the phenology calendar and assigns Kc by growth stage instead of a constant value, reusing the same ET0/TAW/RAW/depletion logic as the original FAO-56 script
 - Phenology Water Balance dashboard page visualizes the phenology-aware FAO-56 output, with a labeled prototype comparison against the constant-Kc Water Balance page
 - A standalone FAO-56 model comparison script (`src/validation/compare_fao56_models.py`) comparing the constant-Kc and phenology-aware FAO-56 outputs day by day
-- **Unified, freshness-aware pipeline orchestration** (`src/pipeline/run_pipeline.py`): `python main.py --skip-fetch` is now the single near-real-time command that regenerates or refreshes historical risk, forecast risk, Sentinel-2 daily aggregation, the combined feature table, the mango phenology calendar, both FAO-56 water-balance models, and the FAO-56 model comparison — each step independently checked for missing inputs and skipped (`SKIP_FRESH`) if its output is already newer than every required input, with the per-step result recorded in `pipeline_run_metadata.json`. No scientific/model logic was duplicated — every step calls the relevant script's own existing function.
+- **Unified, freshness-aware pipeline orchestration** (`src/pipeline/run_pipeline.py`): `python main.py --skip-fetch` is now the single near-real-time command that regenerates or refreshes historical risk, forecast risk, Sentinel-2 daily aggregation, the combined feature table, the mango phenology calendar, both FAO-56 water-balance models, the FAO-56 model comparison, and the forecast-aware irrigation advisory — each step independently checked for missing inputs and skipped (`SKIP_FRESH`) if its output is already newer than every required input, with the per-step result recorded in `pipeline_run_metadata.json`. No scientific/model logic was duplicated — every step calls the relevant script's own existing function.
+- **Forecast-Aware Irrigation Advisory** (`src/advisory/forecast_aware_irrigation.py`): rule-based decision-support module combining phenology-aware FAO-56 water stress, Open-Meteo forecast daily rainfall, and mango crop stage sensitivity to produce farmer-facing irrigation recommendations. Output: `data/processed/muthukur_forecast_aware_irrigation_advisory.csv`. Dashboard page: **Irrigation Advisory**. Not AI/ML; should support but not replace farmer judgment.
 
 Note: the standalone scripts for every step above still exist and can be run individually for targeted debugging, but the recommended day-to-day workflow is the single `python main.py --skip-fetch` command. No ML or cloud/GPU work has started.
 
@@ -553,7 +600,7 @@ Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for
 
 ---
 
-## 14. Future Work
+## 15. Future Work
 
 Planned future upgrades:
 
@@ -572,7 +619,7 @@ See `MILESTONE_SUMMARY.md` for a beginner-friendly snapshot of what is and isn't
 
 ---
 
-## 15. Research Direction
+## 16. Research Direction
 
 This project supports the idea of a sensor-free digital twin for mango orchard risk intelligence.
 
@@ -590,6 +637,6 @@ A sensor-free, phenology-aware, Bayesian digital twin for mango orchard risk for
 
 ---
 
-## 16. Disclaimer
+## 17. Disclaimer
 
 This project is a research and prototype system. The risk scores are not final agronomic recommendations. Field validation, expert calibration, and local farmer observations are required before operational use.
