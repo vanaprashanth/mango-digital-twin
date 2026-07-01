@@ -29,6 +29,9 @@ Working and verified on the local Windows/VS Code setup:
 14. Pipeline integration for the advisory — the advisory is the seventh freshness-aware step in `src/pipeline/run_pipeline.py`; `python main.py --skip-fetch` now regenerates it automatically
 15. Irrigation Advisory dashboard page — sidebar page in `app/streamlit_app.py` showing the latest advisory action, priority callout, FAO-56 / forecast / crop-stage context, decision-rule table, technical details, and limitations
 16. Farmer-facing decision-support layer — first feature in the project that converts monitoring signals into actionable irrigation guidance (not AI/ML; rule-based; supports but does not replace farmer judgment)
+17. Interpolated-Kc FAO-56 water-balance model (`src/water_balance/fao56_interpolated_kc_water_balance.py`) — smooths Kc transitions between mango phenology stages using stage-midpoint linear interpolation instead of abrupt step changes; both `stage_kc` and `interpolated_kc` columns in the output for direct comparison; output: `data/processed/muthukur_fao56_interpolated_kc_water_balance.csv`. Standalone only, not yet in the pipeline or dashboard.
+18. FAO-56 sensitivity analysis (`src/validation/fao56_sensitivity_analysis.py`) — full factorial 36-scenario grid varying root depth (0.8 / 1.0 / 1.2 / 1.5 m), depletion fraction *p* (0.40 / 0.50 / 0.60), and Kc multiplier (0.90 / 1.00 / 1.10); per-scenario metrics include mean ETc, mean depletion, High/Medium/Low stress day counts, and deltas from baseline; outputs: `data/processed/muthukur_fao56_sensitivity_analysis.csv` and `data/processed/muthukur_fao56_sensitivity_summary.md`. First explicit uncertainty-quantification step in the project. Standalone only.
+19. First step toward uncertainty and sensitivity handling — the sensitivity analysis establishes the quantitative uncertainty band around the FAO-56 baseline assumptions, supporting future calibration and validation work
 
 **Important clarification, preserved throughout this roadmap:** the "future
 prediction" shown today is *not* a trained ML model. It is:
@@ -249,6 +252,27 @@ downloads):
    guidance for a farmer. Five possible advisory actions ranging from "No
    irrigation needed now" to "Irrigate now or apply partial irrigation."
    Rule-based, not AI/ML. Should support, not replace, farmer judgment.
+10. [DONE] **Interpolated-Kc FAO-56 water-balance model**
+    (`src/water_balance/fao56_interpolated_kc_water_balance.py`) — produces
+    a smoothly interpolated Kc series using stage-midpoint linear interpolation
+    (anchoring at the midpoint of each stage block and interpolating linearly
+    between consecutive anchors via `np.interp`). The output CSV includes both
+    the original step-function `stage_kc` and the new `interpolated_kc` for
+    direct comparison. Same ET0 / TAW / RAW / depletion physics as all other
+    FAO-56 scripts — no math duplicated. Standalone; the existing constant-Kc
+    and stage-Kc scripts and outputs are untouched.
+11. [DONE] **FAO-56 sensitivity analysis**
+    (`src/validation/fao56_sensitivity_analysis.py`) — full factorial
+    4 × 3 × 3 = 36 scenario grid; baseline is root depth 1.2 m, p = 0.50,
+    Kc multiplier = 1.00; High-stress days range from 264 to 327 across all
+    scenarios (49 – 61% of the 536-day analysis period). Outputs a 36-row
+    scenario CSV and a markdown summary with per-parameter impact tables.
+    Standalone; first explicit uncertainty-quantification step in this project.
+12. [DONE] **First step toward uncertainty and sensitivity handling** — the
+    sensitivity analysis establishes the quantitative uncertainty band around
+    the FAO-56 baseline assumptions (root depth, depletion fraction, Kc),
+    providing a documented foundation for future field calibration and
+    validation.
 
 Kc values used (first-pass assumptions, not field-calibrated):
 

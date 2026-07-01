@@ -47,6 +47,8 @@ The current MVP includes:
 - A Phenology Water Balance dashboard page showing the phenology-aware FAO-56 output, including a prototype comparison against the constant-Kc Water Balance page
 - A standalone FAO-56 model comparison script (`src/validation/compare_fao56_models.py`) comparing the constant-Kc and phenology-aware FAO-56 outputs day by day (ETc differences, water-stress-level changes, stage-wise breakdowns), wired into the unified pipeline, with an FAO-56 Model Comparison dashboard page
 - A Forecast-Aware Irrigation Advisory module (`src/advisory/forecast_aware_irrigation.py`) that combines phenology-aware FAO-56 water stress (Ks coefficient, root-zone depletion, water stress level) with Open-Meteo forecast rainfall and mango crop stage sensitivity to produce farmer-facing decision support — five possible advisory actions: No irrigation needed now / Delay irrigation and recheck / Apply partial irrigation and recheck / Irrigate now or apply partial irrigation / Wait and monitor. Wired into the unified pipeline as the seventh freshness-aware step, with an Irrigation Advisory dashboard page. This is rule-based decision support, not AI/ML, and should support but not replace farmer judgment.
+- An interpolated-Kc FAO-56 water-balance model (`src/water_balance/fao56_interpolated_kc_water_balance.py`) that smooths Kc transitions between mango phenology stages using stage-midpoint linear interpolation, instead of the abrupt step changes used in the phenology-aware script. Both the step-function `stage_kc` and the `interpolated_kc` columns are in the output so results can be compared directly. Output: `data/processed/muthukur_fao56_interpolated_kc_water_balance.csv`. Still assumption-based and not field-calibrated; standalone only, not yet integrated into the pipeline or dashboard.
+- A FAO-56 sensitivity analysis (`src/validation/fao56_sensitivity_analysis.py`) that runs a full factorial grid of 36 scenarios varying root depth (0.8 / 1.0 / 1.2 / 1.5 m), depletion fraction *p* (0.40 / 0.50 / 0.60), and Kc multiplier (0.90 / 1.00 / 1.10) to quantify how sensitive the water-stress outputs are to each assumed parameter. Outputs: `data/processed/muthukur_fao56_sensitivity_analysis.csv` (36-row scenario table) and `data/processed/muthukur_fao56_sensitivity_summary.md` (human-readable report). First explicit uncertainty-quantification step in the project. Still assumption-based; not yet integrated into the pipeline or dashboard.
 
 ---
 
@@ -453,7 +455,7 @@ The original constant-Kc FAO-56 script and its output CSV are untouched —
 this is a separate, parallel script and output file, and it still remains
 available on its own (run it directly, or via `python main.py --skip-fetch`,
 see section 8 above). This script's output is now visible on the
-dashboard's **Phenology Water Balance** page (see section 11 below). **Both
+dashboard's **Phenology Water Balance** page (see section 12 below). **Both
 FAO-56 models, the combined feature table, the mango phenology calendar,
 and the FAO-56 model comparison are now wired into the unified pipeline:**
 `python main.py --skip-fetch` (and the full `python main.py` run)
@@ -469,7 +471,91 @@ irrigation events are not yet included. See `ROADMAP.md` and
 
 ---
 
-## 11. Forecast-Aware Irrigation Advisory (Standalone Module)
+---
+
+## 11. Interpolated-Kc Water Balance and FAO-56 Sensitivity Analysis (Standalone Research Scripts)
+
+In addition to the step-function phenology-aware FAO-56 model, the project now has
+two further standalone research/analysis scripts that improve scientific quality and
+quantify parameter uncertainty.
+
+### Interpolated-Kc water-balance model
+
+The phenology-aware FAO-56 script assigns one Kc value per growth stage, so Kc jumps
+abruptly at each stage boundary.  The new script smooths these transitions:
+
+- **Script:** `src/water_balance/fao56_interpolated_kc_water_balance.py`
+- **Method:** "stage-midpoint linear" interpolation — the midpoint day of each
+  contiguous stage block is the anchor where Kc reaches its full stage value;
+  between consecutive anchors, Kc is linearly interpolated via `np.interp`.
+- **Output:** `data/processed/muthukur_fao56_interpolated_kc_water_balance.csv`
+  (536 rows, same date range as the phenology-aware model).
+- **Columns include:** `stage_kc` (step function, for direct comparison),
+  `interpolated_kc` (the smooth value), `et0_mm_day`, `etc_mm_day`,
+  `root_zone_depletion_mm`, `taw_mm`, `raw_mm`, `ks`, `water_stress_level`,
+  `interpolation_method` ("stage_anchor" or "linear_midpoint").
+- **How to run:**
+  ```bash
+  python src/water_balance/fao56_interpolated_kc_water_balance.py
+  ```
+  Requires `data/processed/muthukur_combined_feature_table.csv` and
+  `data/processed/muthukur_mango_phenology_calendar.csv` to already exist.
+- **Status:** standalone only — not yet wired into `main.py`, `run_pipeline.py`,
+  or the dashboard. The existing constant-Kc and stage-Kc outputs are untouched.
+- **Caveat:** the interpolation is still assumption-based and not field-calibrated.
+  The smooth curve is more physically plausible than a step function but does not
+  capture real Kc dynamics (canopy size, cultivar, local microclimate, irrigation
+  practices). The `interpolation_method` column labels every day as "stage_anchor"
+  or "linear_midpoint" so the smoothing is always visible.
+
+### FAO-56 sensitivity analysis
+
+The FAO-56 water-balance results depend on three key parameters that are assumed,
+not measured at this orchard.  The sensitivity analysis tests how much each
+assumption matters:
+
+- **Script:** `src/validation/fao56_sensitivity_analysis.py`
+- **Parameters varied (full factorial, 4 × 3 × 3 = 36 scenarios):**
+
+  | Parameter | Values tested | Baseline |
+  |---|---|---|
+  | Root depth | 0.8 / 1.0 / 1.2 / 1.5 m | 1.2 m (config) |
+  | Depletion fraction *p* | 0.40 / 0.50 / 0.60 | 0.50 (config) |
+  | Kc multiplier | 0.90 / 1.00 / 1.10 | 1.00 (no scaling) |
+
+- **Per-scenario metrics:** mean ET0, mean ETc, mean root-zone depletion, max
+  depletion, TAW, RAW, High/Medium/Low stress day counts, % High-stress days,
+  and deltas from baseline.
+- **Outputs:**
+  - `data/processed/muthukur_fao56_sensitivity_analysis.csv` — 36-row scenario table
+  - `data/processed/muthukur_fao56_sensitivity_summary.md` — markdown report with
+    per-parameter tables, worst/best-case scenarios, and interpretation notes
+- **How to run:**
+  ```bash
+  python src/validation/fao56_sensitivity_analysis.py
+  ```
+  Requires `data/processed/muthukur_combined_feature_table.csv` and
+  `data/processed/muthukur_mango_phenology_calendar.csv` to already exist.
+- **Key findings (over the 536-day analysis period):**
+  - Baseline (root=1.2 m, p=0.50, Kc×1.00): 297 High-stress days (55.4%), mean ETc 3.78 mm/day
+  - Across all 36 scenarios: High-stress days range from 264 to 327 (49–61%)
+  - Root depth has the largest impact on TAW/RAW and therefore stress-day count;
+    a deeper root zone (1.5 m) can reduce High-stress days by ~33 compared to the
+    shallowest scenario (0.8 m) at fixed p and Kc
+  - Kc multiplier has the largest impact on mean ETc (±~0.38 mm/day)
+  - All three parameters interact: the worst case (root=0.8 m, p=0.40, Kc×1.10)
+    produces 327 High-stress days; the best case (root=1.5 m, p=0.60, Kc×0.90)
+    produces 264 High-stress days
+- **Status:** standalone only — not yet wired into `main.py`, `run_pipeline.py`,
+  or the dashboard.
+- **Caveat:** all parameters varied here are assumed; soil texture inputs come from
+  SoilGrids estimates (not measured profiles), which is a separate source of
+  uncertainty not explored in this analysis.
+
+The original constant-Kc FAO-56 script, the phenology-aware FAO-56 script, and all
+their outputs are unchanged by these additions.
+
+## 12. Forecast-Aware Irrigation Advisory (Standalone Module)
 
 In addition to the water-balance and phenology models above, the project now
 has a standalone module that converts water-stress monitoring into
@@ -511,7 +597,7 @@ and all their outputs are unchanged by this addition.
 
 ---
 
-## 12. Dashboard Sections
+## 13. Dashboard Sections
 
 The Streamlit dashboard uses sidebar navigation with one page per topic, plus a
 data source status panel (last-updated badges for each raw/processed file)
@@ -535,7 +621,7 @@ See `ROADMAP.md` for the full multi-phase development plan (local PC → cloud �
 
 ---
 
-## 13. What-if Simulator
+## 14. What-if Simulator
 
 The what-if simulator allows the user to test changes in:
 
@@ -559,7 +645,7 @@ This simulates wet and humid disease-friendly conditions.
 
 ---
 
-## 14. Current Project Status
+## 15. Current Project Status
 
 Completed:
 
@@ -593,6 +679,8 @@ Completed:
 - A standalone FAO-56 model comparison script (`src/validation/compare_fao56_models.py`) comparing the constant-Kc and phenology-aware FAO-56 outputs day by day
 - **Unified, freshness-aware pipeline orchestration** (`src/pipeline/run_pipeline.py`): `python main.py --skip-fetch` is now the single near-real-time command that regenerates or refreshes historical risk, forecast risk, Sentinel-2 daily aggregation, the combined feature table, the mango phenology calendar, both FAO-56 water-balance models, the FAO-56 model comparison, and the forecast-aware irrigation advisory — each step independently checked for missing inputs and skipped (`SKIP_FRESH`) if its output is already newer than every required input, with the per-step result recorded in `pipeline_run_metadata.json`. No scientific/model logic was duplicated — every step calls the relevant script's own existing function.
 - **Forecast-Aware Irrigation Advisory** (`src/advisory/forecast_aware_irrigation.py`): rule-based decision-support module combining phenology-aware FAO-56 water stress, Open-Meteo forecast daily rainfall, and mango crop stage sensitivity to produce farmer-facing irrigation recommendations. Output: `data/processed/muthukur_forecast_aware_irrigation_advisory.csv`. Dashboard page: **Irrigation Advisory**. Not AI/ML; should support but not replace farmer judgment.
+- **Interpolated-Kc FAO-56 water-balance model** (`src/water_balance/fao56_interpolated_kc_water_balance.py`): smooths Kc transitions between mango phenology stages using stage-midpoint linear interpolation. Output: `data/processed/muthukur_fao56_interpolated_kc_water_balance.csv`. Standalone only — not yet in the pipeline or dashboard. See section 11 above.
+- **FAO-56 sensitivity analysis** (`src/validation/fao56_sensitivity_analysis.py`): 36-scenario full factorial analysis varying root depth, depletion fraction, and Kc multiplier. Outputs: `data/processed/muthukur_fao56_sensitivity_analysis.csv` and `data/processed/muthukur_fao56_sensitivity_summary.md`. First explicit uncertainty-quantification step in the project. Standalone only — not yet in the pipeline or dashboard. See section 11 above.
 
 Note: the standalone scripts for every step above still exist and can be run individually for targeted debugging, but the recommended day-to-day workflow is the single `python main.py --skip-fetch` command. No ML or cloud/GPU work has started.
 
@@ -600,7 +688,7 @@ Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for
 
 ---
 
-## 15. Future Work
+## 16. Future Work
 
 Planned future upgrades:
 
@@ -619,7 +707,7 @@ See `MILESTONE_SUMMARY.md` for a beginner-friendly snapshot of what is and isn't
 
 ---
 
-## 16. Research Direction
+## 17. Research Direction
 
 This project supports the idea of a sensor-free digital twin for mango orchard risk intelligence.
 
@@ -637,6 +725,6 @@ A sensor-free, phenology-aware, Bayesian digital twin for mango orchard risk for
 
 ---
 
-## 17. Disclaimer
+## 18. Disclaimer
 
 This project is a research and prototype system. The risk scores are not final agronomic recommendations. Field validation, expert calibration, and local farmer observations are required before operational use.

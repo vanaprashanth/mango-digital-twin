@@ -413,6 +413,102 @@ decision support for the first time.
 
 ---
 
+## Interpolated-Kc Water Balance and FAO-56 Sensitivity Analysis Milestone (new)
+
+Two standalone research/analysis scripts added to improve the scientific quality
+of the FAO-56 water-balance model and to quantify the uncertainty in its key
+assumed parameters.
+
+### Part A — Interpolated-Kc Water Balance
+
+`src/water_balance/fao56_interpolated_kc_water_balance.py`
+
+- **Problem addressed:** the existing phenology-aware FAO-56 script assigns one
+  Kc value per mango growth stage (a step function), so Kc jumps abruptly at
+  every stage boundary. In reality, a tree's water demand changes gradually as
+  it moves through stages.
+- **Approach:** "stage-midpoint linear" interpolation — the midpoint day of each
+  contiguous stage block is the Kc anchor (full stage value); between consecutive
+  anchors, Kc is linearly interpolated using `np.interp`. This replaces abrupt
+  jumps with smooth transitions while keeping the same stage Kc targets.
+- **Inputs:**
+  - `data/processed/muthukur_combined_feature_table.csv`
+  - `data/processed/muthukur_mango_phenology_calendar.csv`
+- **Output:** `data/processed/muthukur_fao56_interpolated_kc_water_balance.csv`
+  — 536 rows, same date range as the phenology-aware model.
+- **Output columns:** `date`, `mango_stage`, `stage_kc` (step function, for
+  comparison), `interpolated_kc` (smooth value used for ETc/depletion),
+  `et0_mm_day`, `etc_mm_day`, `root_zone_depletion_mm`, `taw_mm`, `raw_mm`,
+  `ks`, `water_stress_level`, `interpolation_method` ("stage_anchor" or
+  "linear_midpoint").
+- **Key statistics (baseline parameters: root=1.2 m, p=0.50):**
+  - Interpolated Kc range: 0.60 – 0.90 (same bounds as stage Kc)
+  - Mean |interpolated Kc − stage Kc| = 0.0275; max = 0.1611
+  - Mean ETc = 3.80 mm/day; mean ET0 = 4.87 mm/day
+  - Water stress: 304 High, 27 Medium, 205 Low days
+- **Physics:** ET0, TAW, RAW, and depletion equations are identical to all
+  other FAO-56 scripts (imported from `fao56_water_balance.py`, not
+  duplicated). Only the Kc driving ETc changes.
+
+### Part B — FAO-56 Sensitivity Analysis
+
+`src/validation/fao56_sensitivity_analysis.py`
+
+- **Problem addressed:** the FAO-56 water balance depends on three key
+  parameters that are assumed, not measured at this orchard: root depth,
+  depletion fraction *p*, and Kc (via a multiplier). It was not known how
+  sensitive the outputs are to each assumption.
+- **Approach:** full factorial 4 × 3 × 3 = 36 scenario grid:
+  - Root depth: 0.8 / 1.0 / 1.2 (baseline) / 1.5 m
+  - Depletion fraction *p*: 0.40 / 0.50 (baseline) / 0.60
+  - Kc multiplier: 0.90 / 1.00 (baseline) / 1.10
+- **Inputs:** same as above (combined feature table + phenology calendar).
+- **Outputs:**
+  - `data/processed/muthukur_fao56_sensitivity_analysis.csv` — 36-row table
+    with per-scenario metrics (mean ETc, mean depletion, max depletion, TAW,
+    RAW, High/Medium/Low stress days, % High-stress, and deltas from baseline)
+  - `data/processed/muthukur_fao56_sensitivity_summary.md` — markdown report
+    with per-parameter tables, worst/best-case scenarios, and interpretation
+    notes
+- **Key findings (536-day analysis period, 2025-01-01 – 2026-06-21):**
+  - Baseline (root=1.2 m, p=0.50, Kc×1.00): 297 High-stress days (55.4%),
+    mean ETc 3.78 mm/day, mean depletion 98.0 mm
+  - Across all 36 scenarios: High-stress days range 264 – 327 (49 – 61%)
+  - Mean ETc range: 3.40 – 4.16 mm/day; mean depletion range: 63 – 126 mm
+  - Root depth has the largest effect on TAW/RAW and therefore stress count;
+    deeper roots (1.5 m) reduce High-stress days by up to 33 vs 0.8 m
+  - Kc multiplier has the largest per-unit effect on mean ETc
+  - All three parameters interact: worst case (root=0.8 m, p=0.40, Kc×1.10)
+    → 327 High days; best case (root=1.5 m, p=0.60, Kc×0.90) → 264 High days
+  - ET0 is identical across all 36 scenarios (does not depend on Kc, root
+    depth, or *p*), isolating water-stress effects from ET0 uncertainty
+
+### Limitations
+
+- Both scripts are **standalone only** — not yet wired into `main.py`,
+  `run_pipeline.py`, or the dashboard. Running `python main.py --skip-fetch`
+  does NOT regenerate these outputs.
+- The interpolated Kc is more physically plausible than a step function but
+  is still assumption-based and not field-calibrated. Real Kc dynamics depend
+  on canopy size, cultivar, local microclimate, and irrigation practices.
+- The sensitivity analysis quantifies the uncertainty band from three
+  parameters; soil texture inputs from SoilGrids (a separate source of TAW/RAW
+  uncertainty) are not varied here.
+- No soil-moisture sensor validation.
+- No yield or outcome validation.
+- Stage Kc anchor values are still first-pass assumptions from general FAO-56 /
+  mango guidance, not measured at this orchard.
+
+### Why it matters
+
+The sensitivity analysis is the first step in this project that explicitly
+documents the uncertainty around the FAO-56 water-stress signal rather than
+presenting a single baseline number. Knowing that High-stress days can range
+from 264 to 327 (±10% relative to baseline) depending on plausible parameter
+values gives important context for interpreting all FAO-56 outputs in this
+project, and sets a baseline against which future field calibration can be
+measured.
+
 ## What Has Not Been Done Yet
 
 - No local/cultivar-specific calibration of the phenology-aware Kc values —

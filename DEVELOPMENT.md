@@ -506,6 +506,72 @@ not AI or machine learning, and that it should support but not replace farmer
 judgment and local knowledge. It is read-only and does not change `main.py`
 or any other dashboard page.
 
+### 7.18 Generate the interpolated-Kc FAO-56 water balance (standalone research script)
+
+A separate, standalone research script smooths the Kc transitions between mango
+phenology stages.  Instead of the abrupt step-function Kc used in
+`fao56_phenology_water_balance.py`, it uses "stage-midpoint linear" interpolation:
+the midpoint day of each stage block is the Kc anchor, and Kc is linearly
+interpolated between consecutive anchors:
+
+```bash
+python src/water_balance/fao56_interpolated_kc_water_balance.py
+```
+
+Inputs:
+- `data/processed/muthukur_combined_feature_table.csv`
+- `data/processed/muthukur_mango_phenology_calendar.csv`
+
+Output: `data/processed/muthukur_fao56_interpolated_kc_water_balance.csv`
+
+The output CSV includes both `stage_kc` (the step-function value, same as the
+phenology-aware script) and `interpolated_kc` (the smoothed value), so the two
+approaches can be compared directly. The `interpolation_method` column labels each
+day as "stage_anchor" or "linear_midpoint" so the smoothing is always traceable.
+
+The ET0, TAW, RAW, and depletion equations are identical to all other FAO-56
+scripts in this project (imported directly from `fao56_water_balance.py`, not
+duplicated). Only the Kc driving ETc changes.
+
+**Important:** this script is currently **standalone only** — it is NOT wired into
+`main.py`, `run_pipeline.py`, or the dashboard. The existing constant-Kc and
+stage-Kc water balance CSVs are untouched. The interpolation is still
+assumption-based and not field-calibrated.
+
+### 7.19 Run the FAO-56 sensitivity analysis (standalone research script)
+
+A standalone sensitivity analysis tests how much the FAO-56 water-stress outputs
+change when the three key assumed parameters are varied across a full factorial grid
+(4 × 3 × 3 = 36 scenarios):
+
+```bash
+python src/validation/fao56_sensitivity_analysis.py
+```
+
+Inputs:
+- `data/processed/muthukur_combined_feature_table.csv`
+- `data/processed/muthukur_mango_phenology_calendar.csv`
+
+Parameters varied:
+
+| Parameter | Values | Baseline |
+|---|---|---|
+| Root depth | 0.8 / 1.0 / 1.2 / 1.5 m | 1.2 m (config) |
+| Depletion fraction *p* | 0.40 / 0.50 / 0.60 | 0.50 (config) |
+| Kc multiplier | 0.90 / 1.00 / 1.10 | 1.00 |
+
+Outputs:
+- `data/processed/muthukur_fao56_sensitivity_analysis.csv` — 36-row scenario table
+  with mean ETc, mean depletion, High/Medium/Low stress day counts, and deltas from
+  baseline for every combination
+- `data/processed/muthukur_fao56_sensitivity_summary.md` — markdown report with
+  per-parameter tables, worst/best-case scenarios, and interpretation notes
+
+**Important:** this script is currently **standalone only** — it is NOT wired into
+`main.py`, `run_pipeline.py`, or the dashboard. It does not overwrite any existing
+water-balance CSV. It is the first explicit uncertainty-quantification step in this
+project.
+
 ### 7.15 What's configured so far
 
 `configs/config.yaml` now has a `remote_sensing` section with the study
@@ -615,3 +681,22 @@ a later phase.
   (6 h / 12 h totals unavailable), no soil-moisture sensor validation, no
   irrigation-event history, no yield validation. Advisory should support
   but not replace farmer judgment.
+- `src/water_balance/fao56_interpolated_kc_water_balance.py` (step 7.18) — a
+  standalone research script that produces a smoothly interpolated Kc series
+  from the stage-Kc step function, using "stage-midpoint linear" interpolation
+  (`np.interp` between the midpoint of each contiguous stage block). Imports
+  ET0, TAW/RAW, and depletion functions directly from `fao56_water_balance.py`
+  — no physics duplicated. Output CSV includes both `stage_kc` and
+  `interpolated_kc` columns for direct comparison, plus `interpolation_method`
+  labelling each day. Output:
+  `data/processed/muthukur_fao56_interpolated_kc_water_balance.csv`.
+  Currently standalone only — not yet wired into `run_pipeline.py`, `main.py`,
+  or the dashboard. The existing constant-Kc and stage-Kc CSVs are untouched.
+  Still assumption-based, not field-calibrated.
+- `src/validation/fao56_sensitivity_analysis.py` (step 7.19) — a standalone
+  sensitivity analysis that runs the FAO-56 phenology-aware water balance across
+  a full factorial grid of 4 × 3 × 3 = 36 parameter combinations (root depth ×
+  depletion fraction × Kc multiplier) and records per-scenario metrics and
+  deltas from the baseline in a 36-row CSV and a markdown summary. First
+  explicit uncertainty-quantification step in this project. Currently standalone
+  only — not yet in `run_pipeline.py`, `main.py`, or the dashboard.
