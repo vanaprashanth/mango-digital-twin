@@ -140,7 +140,7 @@ Useful to run before committing changes or after editing several files.
 After steps 1–6 above, you should see:
 - Step 2 prints a console summary ending with `Core pipeline (fetch/risk)
   finished successfully.`, followed by a `RUN` / `SKIP_FRESH` /
-  `SKIP_MISSING_INPUT` / `FAILED` line for each of the seven freshness-aware
+  `SKIP_MISSING_INPUT` / `FAILED` line for each of the nine freshness-aware
   downstream steps, and finally `Pipeline run metadata written to:
   data/processed/pipeline_run_metadata.json`.
 - Step 5 ends with all tests showing `PASSED` and a line like `24 passed
@@ -471,7 +471,7 @@ action, priority, reason, and limitations.
 
 The advisory is printed to the console as a formatted summary when run
 directly. It is also regenerated automatically by
-`python main.py --skip-fetch` (step 2 above) as the seventh freshness-aware
+`python main.py --skip-fetch` (step 2 above) as the ninth freshness-aware
 downstream step, whenever either input is newer than the last advisory.
 
 **Note on forecast resolution:** only daily forecast data is available from
@@ -533,10 +533,11 @@ The ET0, TAW, RAW, and depletion equations are identical to all other FAO-56
 scripts in this project (imported directly from `fao56_water_balance.py`, not
 duplicated). Only the Kc driving ETc changes.
 
-**Important:** this script is currently **standalone only** — it is NOT wired into
-`main.py`, `run_pipeline.py`, or the dashboard. The existing constant-Kc and
-stage-Kc water balance CSVs are untouched. The interpolation is still
-assumption-based and not field-calibrated.
+**Pipeline integration:** this script is now the **sixth freshness-aware step** in
+`src/pipeline/run_pipeline.py` — `python main.py --skip-fetch` regenerates its output
+automatically whenever the combined feature table or phenology calendar is newer.
+The existing constant-Kc and stage-Kc water balance CSVs are untouched. The
+interpolation is still assumption-based and not field-calibrated. Not yet on the dashboard.
 
 ### 7.19 Run the FAO-56 sensitivity analysis (standalone research script)
 
@@ -567,10 +568,11 @@ Outputs:
 - `data/processed/muthukur_fao56_sensitivity_summary.md` — markdown report with
   per-parameter tables, worst/best-case scenarios, and interpretation notes
 
-**Important:** this script is currently **standalone only** — it is NOT wired into
-`main.py`, `run_pipeline.py`, or the dashboard. It does not overwrite any existing
-water-balance CSV. It is the first explicit uncertainty-quantification step in this
-project.
+**Pipeline integration:** this script is now the **eighth freshness-aware step** in
+`src/pipeline/run_pipeline.py` — `python main.py --skip-fetch` regenerates both output
+files automatically whenever the combined feature table or phenology calendar is newer.
+It does not overwrite any existing water-balance CSV. First explicit
+uncertainty-quantification step in this project. Not yet on the dashboard.
 
 ### 7.15 What's configured so far
 
@@ -650,7 +652,7 @@ a later phase.
   `data/processed/muthukur_fao56_phenology_water_balance.csv`. Does not
   modify the original constant-Kc script or CSV. Shown on the dashboard's
   **Phenology Water Balance** page (step 7.14). As of the unified pipeline
-  orchestration milestone, this is one of seven freshness-aware steps in
+  orchestration milestone, this is one of nine freshness-aware steps in
   `src/pipeline/run_pipeline.py` that call each script's own existing build
   function directly, with no math duplicated — `python main.py
   --skip-fetch` and full `python main.py` both regenerate its output CSV
@@ -672,7 +674,7 @@ a later phase.
   Open-Meteo forecast risk CSV, applies a rule-based decision engine that
   combines FAO-56 water-stress level (Low / Medium / High), Ks coefficient,
   mango crop stage, and forecast daily rainfall to produce a single-row
-  advisory snapshot. This is the seventh and final freshness-aware step in
+  advisory snapshot. This is the ninth and final freshness-aware step in
   `run_pipeline.py`, regenerated automatically by
   `python main.py --skip-fetch` whenever either input is newer than the
   last advisory output. Output:
@@ -690,13 +692,15 @@ a later phase.
   `interpolated_kc` columns for direct comparison, plus `interpolation_method`
   labelling each day. Output:
   `data/processed/muthukur_fao56_interpolated_kc_water_balance.csv`.
-  Currently standalone only — not yet wired into `run_pipeline.py`, `main.py`,
-  or the dashboard. The existing constant-Kc and stage-Kc CSVs are untouched.
-  Still assumption-based, not field-calibrated.
+  Now the sixth freshness-aware step in `run_pipeline.py` — regenerated
+  automatically by `python main.py --skip-fetch`. The existing constant-Kc
+  and stage-Kc CSVs are untouched. Still assumption-based, not field-calibrated.
+  Not yet on the dashboard.
 - `src/validation/fao56_sensitivity_analysis.py` (step 7.19) — a standalone
   sensitivity analysis that runs the FAO-56 phenology-aware water balance across
   a full factorial grid of 4 × 3 × 3 = 36 parameter combinations (root depth ×
   depletion fraction × Kc multiplier) and records per-scenario metrics and
   deltas from the baseline in a 36-row CSV and a markdown summary. First
-  explicit uncertainty-quantification step in this project. Currently standalone
-  only — not yet in `run_pipeline.py`, `main.py`, or the dashboard.
+  explicit uncertainty-quantification step in this project. Now the eighth
+  freshness-aware step in `run_pipeline.py` — regenerated automatically by
+  `python main.py --skip-fetch`. Not yet on the dashboard.

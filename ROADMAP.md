@@ -24,14 +24,16 @@ Working and verified on the local Windows/VS Code setup:
 9. NASA POWER `-999` missing-value cleaning
 10. README and project structure cleanup
 11. `main.py` pipeline runner with `--skip-fetch`
-12. Unified, freshness-aware pipeline orchestration — `python main.py --skip-fetch` is now the single command that regenerates/refreshes every downstream output (historical risk, forecast risk, Sentinel-2 daily aggregation, the combined feature table, the mango phenology calendar, both FAO-56 water-balance models, and the FAO-56 model comparison) using RUN / SKIP_FRESH / SKIP_MISSING_INPUT logic, with per-step results recorded in `pipeline_run_metadata.json`
+12. Unified, freshness-aware pipeline orchestration (9 steps) — `python main.py --skip-fetch` is now the single command that regenerates/refreshes every downstream output (historical risk, forecast risk, Sentinel-2 daily aggregation, the combined feature table, the mango phenology calendar, both FAO-56 water-balance models, the interpolated-Kc FAO-56 water balance, the FAO-56 model comparison, the FAO-56 sensitivity analysis, and the forecast-aware irrigation advisory) using RUN / SKIP_FRESH / SKIP_MISSING_INPUT logic, with per-step results recorded in `pipeline_run_metadata.json`
 13. Standalone forecast-aware irrigation advisory module (`src/advisory/forecast_aware_irrigation.py`) — combines phenology-aware FAO-56 water stress (Ks, water stress level, root-zone depletion), Open-Meteo forecast daily rainfall, and mango crop stage sensitivity into rule-based farmer-facing decision support; output: `data/processed/muthukur_forecast_aware_irrigation_advisory.csv`
-14. Pipeline integration for the advisory — the advisory is the seventh freshness-aware step in `src/pipeline/run_pipeline.py`; `python main.py --skip-fetch` now regenerates it automatically
+14. Pipeline integration for the advisory — the advisory is now the ninth freshness-aware step in `src/pipeline/run_pipeline.py`; `python main.py --skip-fetch` now regenerates it automatically
 15. Irrigation Advisory dashboard page — sidebar page in `app/streamlit_app.py` showing the latest advisory action, priority callout, FAO-56 / forecast / crop-stage context, decision-rule table, technical details, and limitations
 16. Farmer-facing decision-support layer — first feature in the project that converts monitoring signals into actionable irrigation guidance (not AI/ML; rule-based; supports but does not replace farmer judgment)
-17. Interpolated-Kc FAO-56 water-balance model (`src/water_balance/fao56_interpolated_kc_water_balance.py`) — smooths Kc transitions between mango phenology stages using stage-midpoint linear interpolation instead of abrupt step changes; both `stage_kc` and `interpolated_kc` columns in the output for direct comparison; output: `data/processed/muthukur_fao56_interpolated_kc_water_balance.csv`. Standalone only, not yet in the pipeline or dashboard.
-18. FAO-56 sensitivity analysis (`src/validation/fao56_sensitivity_analysis.py`) — full factorial 36-scenario grid varying root depth (0.8 / 1.0 / 1.2 / 1.5 m), depletion fraction *p* (0.40 / 0.50 / 0.60), and Kc multiplier (0.90 / 1.00 / 1.10); per-scenario metrics include mean ETc, mean depletion, High/Medium/Low stress day counts, and deltas from baseline; outputs: `data/processed/muthukur_fao56_sensitivity_analysis.csv` and `data/processed/muthukur_fao56_sensitivity_summary.md`. First explicit uncertainty-quantification step in the project. Standalone only.
+17. Interpolated-Kc FAO-56 water-balance model (`src/water_balance/fao56_interpolated_kc_water_balance.py`) — smooths Kc transitions between mango phenology stages using stage-midpoint linear interpolation instead of abrupt step changes; both `stage_kc` and `interpolated_kc` columns in the output for direct comparison; output: `data/processed/muthukur_fao56_interpolated_kc_water_balance.csv`. Now the sixth freshness-aware step in the unified pipeline; not yet on the dashboard.
+18. FAO-56 sensitivity analysis (`src/validation/fao56_sensitivity_analysis.py`) — full factorial 36-scenario grid varying root depth (0.8 / 1.0 / 1.2 / 1.5 m), depletion fraction *p* (0.40 / 0.50 / 0.60), and Kc multiplier (0.90 / 1.00 / 1.10); per-scenario metrics include mean ETc, mean depletion, High/Medium/Low stress day counts, and deltas from baseline; outputs: `data/processed/muthukur_fao56_sensitivity_analysis.csv` and `data/processed/muthukur_fao56_sensitivity_summary.md`. First explicit uncertainty-quantification step in the project. Now the eighth freshness-aware step in the unified pipeline; not yet on the dashboard.
 19. First step toward uncertainty and sensitivity handling — the sensitivity analysis establishes the quantitative uncertainty band around the FAO-56 baseline assumptions, supporting future calibration and validation work
+20. Pipeline integration for the interpolated-Kc FAO-56 water balance — now the sixth freshness-aware step in `src/pipeline/run_pipeline.py`; `python main.py --skip-fetch` regenerates it automatically whenever the combined feature table or phenology calendar is newer
+21. Pipeline integration for the FAO-56 sensitivity analysis — now the eighth freshness-aware step in `src/pipeline/run_pipeline.py`; `python main.py --skip-fetch` regenerates both output files automatically; the advisory moves from seventh to ninth step
 
 **Important clarification, preserved throughout this roadmap:** the "future
 prediction" shown today is *not* a trained ML model. It is:
@@ -233,7 +235,7 @@ downloads):
    output: `data/processed/muthukur_forecast_aware_irrigation_advisory.csv`.
    Standalone command: `python src/advisory/forecast_aware_irrigation.py`.
 7. [DONE] **Pipeline integration for the advisory output** — the advisory
-   is the seventh freshness-aware downstream step in
+   is the ninth freshness-aware downstream step in
    `src/pipeline/run_pipeline.py`, with `input_keys` =
    `["fao56_phenology_water_balance_csv", "forecast_risk_csv"]` and
    `output_keys` = `["forecast_aware_irrigation_advisory_csv"]`.
@@ -259,15 +261,14 @@ downloads):
     between consecutive anchors via `np.interp`). The output CSV includes both
     the original step-function `stage_kc` and the new `interpolated_kc` for
     direct comparison. Same ET0 / TAW / RAW / depletion physics as all other
-    FAO-56 scripts — no math duplicated. Standalone; the existing constant-Kc
-    and stage-Kc scripts and outputs are untouched.
+    FAO-56 scripts — no math duplicated. Now the sixth freshness-aware step in `run_pipeline.py`; the existing constant-Kc and stage-Kc scripts and outputs are untouched.
 11. [DONE] **FAO-56 sensitivity analysis**
     (`src/validation/fao56_sensitivity_analysis.py`) — full factorial
     4 × 3 × 3 = 36 scenario grid; baseline is root depth 1.2 m, p = 0.50,
     Kc multiplier = 1.00; High-stress days range from 264 to 327 across all
     scenarios (49 – 61% of the 536-day analysis period). Outputs a 36-row
     scenario CSV and a markdown summary with per-parameter impact tables.
-    Standalone; first explicit uncertainty-quantification step in this project.
+    Now the eighth freshness-aware step in `run_pipeline.py`; first explicit uncertainty-quantification step in this project.
 12. [DONE] **First step toward uncertainty and sensitivity handling** — the
     sensitivity analysis establishes the quantitative uncertainty band around
     the FAO-56 baseline assumptions (root depth, depletion fraction, Kc),

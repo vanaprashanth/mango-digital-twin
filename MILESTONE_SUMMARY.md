@@ -485,9 +485,10 @@ assumed parameters.
 
 ### Limitations
 
-- Both scripts are **standalone only** — not yet wired into `main.py`,
-  `run_pipeline.py`, or the dashboard. Running `python main.py --skip-fetch`
-  does NOT regenerate these outputs.
+- Both scripts are now freshness-aware steps in the unified pipeline:
+  the interpolated-Kc water balance is the **sixth step** and the sensitivity
+  analysis is the **eighth step** in `src/pipeline/run_pipeline.py`.
+  `python main.py --skip-fetch` now regenerates both outputs automatically.
 - The interpolated Kc is more physically plausible than a step function but
   is still assumption-based and not field-calibrated. Real Kc dynamics depend
   on canopy size, cultivar, local microclimate, and irrigation practices.
@@ -508,6 +509,32 @@ from 264 to 327 (±10% relative to baseline) depending on plausible parameter
 values gives important context for interpreting all FAO-56 outputs in this
 project, and sets a baseline against which future field calibration can be
 measured.
+
+## Milestone: Pipeline Integration — Interpolated-Kc FAO-56 and Sensitivity Analysis (2026-07-01)
+
+### What Was Done
+
+The two scripts written in the previous milestone — `src/water_balance/fao56_interpolated_kc_water_balance.py` and `src/validation/fao56_sensitivity_analysis.py` — are now wired into the unified freshness-aware pipeline as steps 6 and 8 respectively.
+
+**Changes to `src/pipeline/run_pipeline.py`:**
+- Added import for `fao56_interpolated_kc_water_balance` and `fao56_sensitivity_analysis`
+- Inserted `FreshnessAwareStep` entry for interpolated-Kc water balance (step 6, between phenology-aware FAO-56 and model comparison), with `input_keys = ["combined_feature_table_csv", "mango_phenology_calendar_csv"]` and `output_keys = ["fao56_interpolated_kc_water_balance_csv"]`
+- Inserted `FreshnessAwareStep` entry for FAO-56 sensitivity analysis (step 8, between model comparison and advisory), with `input_keys = ["combined_feature_table_csv", "mango_phenology_calendar_csv"]` and `output_keys = ["fao56_sensitivity_analysis_csv", "fao56_sensitivity_summary_md"]`
+- The existing forecast-aware irrigation advisory moves from step 7 to step 9
+
+**Changes to `src/utils/pipeline_metadata.py`:**
+- Added `"fao56_interpolated_kc_water_balance"` and `"fao56_sensitivity_analysis"` to `OUTPUT_FILE_PATH_KEYS`
+- Added `"fao56_interpolated_kc_latest_date"` to `LATEST_DATE_FILE_KEYS` (sensitivity analysis CSV has no `date` column — correctly excluded)
+
+### Verification
+
+Both new steps appeared as `RUN` on first execution and `SKIP_FRESH` on re-run (freshness logic correct). All 24 existing tests pass. No existing outputs or schemas were modified.
+
+### Constraints Honored
+
+- No scientific logic was modified or duplicated — both steps call the existing standalone scripts' own `build_fn` directly
+- No changes to `main.py`, dashboard, or output CSV schemas
+- No new dashboard pages were added in this milestone
 
 ## What Has Not Been Done Yet
 
