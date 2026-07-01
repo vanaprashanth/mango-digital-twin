@@ -88,6 +88,7 @@ fao56:
     "Fruit development": 0.90
     "Maturity / harvest": 0.80
     "Rest / vegetative phase": 0.60
+    "Rest": 0.60  # alias seen at phenology-calendar boundary dates (same Kc as "Rest / vegetative phase")
 
 # Mango phenology calendar settings (standalone prep phase — see
 # src/phenology/mango_phenology_calendar.py). This is a SIMPLIFIED, REGIONAL
@@ -120,6 +121,9 @@ paths:
   fao56_model_comparison_csv: "data/processed/muthukur_fao56_model_comparison.csv"
   fao56_model_comparison_summary_md: "data/processed/muthukur_fao56_model_comparison_summary.md"
   forecast_aware_irrigation_advisory_csv: "data/processed/muthukur_forecast_aware_irrigation_advisory.csv"
+  fao56_interpolated_kc_water_balance_csv: "data/processed/muthukur_fao56_interpolated_kc_water_balance.csv"
+  fao56_sensitivity_analysis_csv: "data/processed/muthukur_fao56_sensitivity_analysis.csv"
+  fao56_sensitivity_summary_md: "data/processed/muthukur_fao56_sensitivity_summary.md"
   pipeline_run_metadata_json: "data/processed/pipeline_run_metadata.json"
 
 risk_thresholds:
