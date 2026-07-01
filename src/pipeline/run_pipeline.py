@@ -74,6 +74,8 @@ from src.water_balance import fao56_water_balance as constant_kc_script
 from src.water_balance import fao56_phenology_water_balance as phenology_kc_script
 from src.validation import compare_fao56_models as model_comparison_script
 from src.advisory import forecast_aware_irrigation as advisory_script
+from src.water_balance import fao56_interpolated_kc_water_balance as interpolated_kc_script
+from src.validation import fao56_sensitivity_analysis as sensitivity_analysis_script
 from src.utils.config import get_config
 from src.utils.logger import get_logger
 from src.utils.pipeline_metadata import (
@@ -197,10 +199,22 @@ FRESHNESS_AWARE_STEPS = [
         output_keys=["fao56_phenology_water_balance_csv"],
     ),
     FreshnessAwareStep(
+        name="Interpolated-Kc FAO-56 water balance",
+        build_fn=interpolated_kc_script.build_fao56_interpolated_kc_water_balance,
+        input_keys=["combined_feature_table_csv", "mango_phenology_calendar_csv"],
+        output_keys=["fao56_interpolated_kc_water_balance_csv"],
+    ),
+    FreshnessAwareStep(
         name="FAO-56 model comparison",
         build_fn=model_comparison_script.build_fao56_model_comparison,
         input_keys=["fao56_water_balance_csv", "fao56_phenology_water_balance_csv"],
         output_keys=["fao56_model_comparison_csv", "fao56_model_comparison_summary_md"],
+    ),
+    FreshnessAwareStep(
+        name="FAO-56 sensitivity analysis",
+        build_fn=sensitivity_analysis_script.build_fao56_sensitivity_analysis,
+        input_keys=["combined_feature_table_csv", "mango_phenology_calendar_csv"],
+        output_keys=["fao56_sensitivity_analysis_csv", "fao56_sensitivity_summary_md"],
     ),
     FreshnessAwareStep(
         name="Forecast-aware irrigation advisory",
@@ -370,10 +384,11 @@ def main():
     print(
         "These steps regenerate Sentinel-2 aggregation, the combined feature "
         "table, the phenology calendar, both FAO-56 water-balance models, "
-        "the model comparison, and the forecast-aware irrigation advisory "
-        "whenever their required inputs are newer than their last output -- "
-        "or skip cleanly if everything is already current or a required input "
-        "is still missing."
+        "the interpolated-Kc water balance, the model comparison, the "
+        "FAO-56 sensitivity analysis, and the forecast-aware irrigation "
+        "advisory whenever their required inputs are newer than their last "
+        "output -- or skip cleanly if everything is already current or a "
+        "required input is still missing."
     )
     print()
     step_results = run_freshness_aware_steps(FRESHNESS_AWARE_STEPS)

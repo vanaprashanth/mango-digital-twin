@@ -91,6 +91,8 @@ OUTPUT_FILE_PATH_KEYS: dict[str, str] = {
     "fao56_phenology_water_balance": "fao56_phenology_water_balance_csv",
     "fao56_model_comparison": "fao56_model_comparison_csv",
     "forecast_aware_irrigation_advisory": "forecast_aware_irrigation_advisory_csv",
+    "fao56_interpolated_kc_water_balance": "fao56_interpolated_kc_water_balance_csv",
+    "fao56_sensitivity_analysis": "fao56_sensitivity_analysis_csv",
 }
 
 # Files to inspect for "latest available date" -- the freshness signal that
@@ -106,6 +108,7 @@ LATEST_DATE_FILE_KEYS: dict[str, str] = {
     "phenology_calendar_latest_date": "mango_phenology_calendar_csv",
     "fao56_phenology_water_balance_latest_date": "fao56_phenology_water_balance_csv",
     "fao56_model_comparison_latest_date": "fao56_model_comparison_csv",
+    "fao56_interpolated_kc_latest_date": "fao56_interpolated_kc_water_balance_csv",
 }
 
 NEAR_REAL_TIME_NOTE = (
