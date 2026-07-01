@@ -536,6 +536,34 @@ Both new steps appeared as `RUN` on first execution and `SKIP_FRESH` on re-run (
 - No changes to `main.py`, dashboard, or output CSV schemas
 - No new dashboard pages were added in this milestone
 
+## Milestone: Daily Pipeline Refresh Automation — Windows Task Scheduler (2026-07-01)
+
+### What Was Done
+
+Added a PowerShell script and documentation to automate the full daily pipeline refresh on Windows.
+
+**New files:**
+- `scripts/run_daily_pipeline.ps1` — activates `.venv`, runs `python main.py` (full fetch + regeneration), saves a timestamped log under `logs/daily_pipeline/daily_pipeline_YYYY-MM-DD_HH-mm-ss.log`, prints a clear success/failure message, and exits with code 1 on failure so Task Scheduler can detect and report failures.
+- `docs/DAILY_REFRESH_WINDOWS.md` — full setup guide covering: the difference between `python main.py` and `python main.py --skip-fetch`, how to test the script manually, how to create a Task Scheduler task (GUI and PowerShell one-liner), how to check logs, how to confirm the dashboard is using fresh data, and troubleshooting for common failures (network unavailable, API error, venv missing, GEE auth expired, etc.).
+- `logs/daily_pipeline/.gitkeep` — placeholder to track the log directory in git without committing log files.
+
+**Key design decisions:**
+- Daily run uses `python main.py` (full fetch), not `--skip-fetch` (offline/rebuild only).
+- Logs are written to `logs/daily_pipeline/` with one file per run; the directory is git-tracked via `.gitkeep` but individual log files are excluded via `.gitignore`.
+- The script exits with a non-zero code on failure, making it compatible with Task Scheduler's "last run result" monitoring.
+- No Airflow/Prefect/Dagster — local Windows Task Scheduler is sufficient for a single-machine prototype.
+
+### Verification
+
+- `python -m compileall app src tests main.py` — clean.
+- `python -m pytest tests/ -v` — 24/24 passed.
+- Script ran manually; log file appeared in `logs/daily_pipeline/`.
+
+### Constraints Honored
+
+- No changes to pipeline science, dashboard, or output CSV schemas.
+- No cloud infrastructure introduced.
+
 ## What Has Not Been Done Yet
 
 - No local/cultivar-specific calibration of the phenology-aware Kc values —

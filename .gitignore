@@ -8,7 +8,9 @@ __pycache__/
 .pytest_cache/
 
 # Logs (regenerated automatically on every pipeline run)
-logs/
+logs/**/*.log
+# Keep directory placeholders tracked
+!logs/**/.gitkeep
 
 # Earth Engine / credential files, if ever present locally
 *.json

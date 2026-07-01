@@ -34,6 +34,7 @@ Working and verified on the local Windows/VS Code setup:
 19. First step toward uncertainty and sensitivity handling — the sensitivity analysis establishes the quantitative uncertainty band around the FAO-56 baseline assumptions, supporting future calibration and validation work
 20. Pipeline integration for the interpolated-Kc FAO-56 water balance — now the sixth freshness-aware step in `src/pipeline/run_pipeline.py`; `python main.py --skip-fetch` regenerates it automatically whenever the combined feature table or phenology calendar is newer
 21. Pipeline integration for the FAO-56 sensitivity analysis — now the eighth freshness-aware step in `src/pipeline/run_pipeline.py`; `python main.py --skip-fetch` regenerates both output files automatically; the advisory moves from seventh to ninth step
+22. Daily pipeline refresh automation for Windows — `scripts/run_daily_pipeline.ps1` activates the virtual environment, runs `python main.py` (full fetch + regeneration), saves a timestamped log under `logs/daily_pipeline/`, and exits non-zero on failure; `docs/DAILY_REFRESH_WINDOWS.md` covers Task Scheduler setup, log checking, and troubleshooting
 
 **Important clarification, preserved throughout this roadmap:** the "future
 prediction" shown today is *not* a trained ML model. It is:
@@ -294,9 +295,10 @@ Not yet done from Phase 5 scope (kept as future work, not started):
 - Field/yield validation
 - Phenology-aware heat/disease/forecast risk logic beyond Kc (items 1-4
   in the "Risk should change by stage" list above)
-- A real scheduler for unattended/recurring pipeline runs (the pipeline
-  itself is now unified and freshness-aware, via item 5 above, but nothing
-  triggers it automatically yet — every run is still manually invoked)
+- A cloud/server scheduler for unattended recurring runs (local Windows Task
+  Scheduler automation is now available via `scripts/run_daily_pipeline.ps1`
+  and `docs/DAILY_REFRESH_WINDOWS.md`; cloud-based scheduling is a Phase 7
+  item)
 
 ---
 

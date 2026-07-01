@@ -241,16 +241,22 @@ pip install -r requirements.txt
 
 ## 8. How to Run the Project
 
-### Option A: Run the unified pipeline (recommended)
+### Option A: Run the unified pipeline
+
+**Full daily refresh** (fetches fresh data from NASA POWER, Open-Meteo, SoilGrids — recommended for regular use):
+
+```bash
+python main.py
+```
+
+**Offline / rebuild mode** (skips all network fetches, recomputes from raw data already on disk — use for local testing):
 
 ```bash
 python main.py --skip-fetch
 ```
 
-As of the pipeline-orchestration milestone, this is the main near-real-time
-pipeline command — a single command that brings every downstream output up
-to date from whatever raw/cached data is already on disk, with no network
-calls. It runs in two layers every time:
+Both commands bring every downstream output up to date. The offline mode
+is the fastest way to confirm code changes without an internet connection. It runs in two layers every time:
 
 1. **Core risk recomputation** — historical risk and forecast risk are
    recomputed from the cached NASA POWER / Open-Meteo / SoilGrids CSVs.
@@ -271,18 +277,6 @@ it, the step prints `RUN` and regenerates it. A step whose required input
 doesn't exist yet at all is skipped with a clear warning (`SKIP_MISSING_INPUT`)
 rather than failing the whole pipeline run.
 
-If you want a full run including fresh network fetches (NASA POWER,
-SoilGrids, Open-Meteo) before the same downstream regeneration, drop the
-flag:
-
-```bash
-python main.py
-```
-
-This runs every fetch/risk step in the correct order — NASA POWER fetch →
-SoilGrids fetch → historical risk engine → Open-Meteo fetch → forecast risk
-engine — and then the same freshness-aware downstream steps as above.
-
 `main.py` itself is just a thin entry point — both commands above delegate
 to `src/pipeline/run_pipeline.py`, which defines the actual step list.
 
@@ -292,6 +286,11 @@ file modification times, and a per-step `RUN` / `SKIP_FRESH` /
 `SKIP_MISSING_INPUT` / `FAILED` result for every freshness-aware step — so
 you can see exactly what happened on the last run without re-reading every
 CSV yourself.
+
+**Automated daily refresh (Windows):** a PowerShell script and Task Scheduler
+setup are provided in `scripts/run_daily_pipeline.ps1` and documented in
+`docs/DAILY_REFRESH_WINDOWS.md`. This runs `python main.py` once per day at
+6 AM local time and saves timestamped logs under `logs/daily_pipeline/`.
 
 Then launch the dashboard:
 
@@ -680,8 +679,9 @@ Completed:
 - **Forecast-Aware Irrigation Advisory** (`src/advisory/forecast_aware_irrigation.py`): rule-based decision-support module combining phenology-aware FAO-56 water stress, Open-Meteo forecast daily rainfall, and mango crop stage sensitivity to produce farmer-facing irrigation recommendations. Output: `data/processed/muthukur_forecast_aware_irrigation_advisory.csv`. Dashboard page: **Irrigation Advisory**. Not AI/ML; should support but not replace farmer judgment.
 - **Interpolated-Kc FAO-56 water-balance model** (`src/water_balance/fao56_interpolated_kc_water_balance.py`): smooths Kc transitions between mango phenology stages using stage-midpoint linear interpolation. Output: `data/processed/muthukur_fao56_interpolated_kc_water_balance.csv`. Now the sixth freshness-aware pipeline step — regenerated automatically by `python main.py --skip-fetch`. Not yet on the dashboard. See section 11 above.
 - **FAO-56 sensitivity analysis** (`src/validation/fao56_sensitivity_analysis.py`): 36-scenario full factorial analysis varying root depth, depletion fraction, and Kc multiplier. Outputs: `data/processed/muthukur_fao56_sensitivity_analysis.csv` and `data/processed/muthukur_fao56_sensitivity_summary.md`. First explicit uncertainty-quantification step in the project. Now the eighth freshness-aware pipeline step — regenerated automatically by `python main.py --skip-fetch`. Not yet on the dashboard. See section 11 above.
+- **Daily pipeline refresh automation** (`scripts/run_daily_pipeline.ps1`): a PowerShell script that activates the virtual environment, runs `python main.py`, saves timestamped logs under `logs/daily_pipeline/`, and exits with a non-zero status on failure. Configured via Windows Task Scheduler for daily 6 AM runs. See `docs/DAILY_REFRESH_WINDOWS.md` for the full setup guide.
 
-Note: the standalone scripts for every step above still exist and can be run individually for targeted debugging, but the recommended day-to-day workflow is the single `python main.py --skip-fetch` command. No ML or cloud/GPU work has started.
+Note: the standalone scripts for every step above still exist and can be run individually for targeted debugging, but the recommended day-to-day workflow is `python main.py` for a full refresh (fetches fresh data) or `python main.py --skip-fetch` for an offline rebuild. Daily refresh can be automated locally with Windows Task Scheduler — see `docs/DAILY_REFRESH_WINDOWS.md`. No ML or cloud/GPU work has started.
 
 Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for full detail): phenology-aware crop coefficients/risk logic beyond Kc, calibration of Kc values against local/cultivar data, and advanced modeling (Monte Carlo, Bayesian calibration, ML-based forecasting) with cloud deployment, a real scheduler, and IndiaAI Compute as later-stage options only if a genuine deployment/GPU/scale need arises.
 

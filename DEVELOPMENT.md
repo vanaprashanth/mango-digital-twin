@@ -14,16 +14,25 @@ pip install -r requirements.txt
 Run this once, and again any time `requirements.txt` changes (it now
 includes `pytest` for running tests).
 
-## 2. Run the unified pipeline without re-fetching (recommended day-to-day command)
+## 2. Run the full pipeline (recommended for daily use)
+
+```bash
+python main.py
+```
+
+This is the **full pipeline refresh**: fetches fresh raw data from NASA POWER,
+Open-Meteo, and SoilGrids, runs both risk engines, then runs all nine
+freshness-aware downstream steps. Use this command for the daily scheduled run
+and any time you want up-to-date raw data.
+
+For offline/rebuild mode (no network calls — recomputes from raw data already on disk):
 
 ```bash
 python main.py --skip-fetch
 ```
 
-This is now the **recommended main command** for day-to-day use: a single,
-near-real-time pipeline run that brings every downstream output up to date
-from cached/raw data already on disk, with no network calls. It runs in two
-layers:
+Use `--skip-fetch` for local testing and development when you do not want to
+re-fetch. Both commands run in two layers:
 
 1. **Core risk recomputation** — historical risk and forecast risk are
    recomputed from the weather/soil CSVs already saved in `data/raw/`.
@@ -48,29 +57,31 @@ Each downstream step prints one of four statuses, also recorded per-step in
   failure; the rest of the pipeline still continues, and the failure is
   recorded in the metadata JSON.
 
-This is the fastest way to confirm your code changes didn't break the
-scoring or modeling logic, and it works with no internet connection.
+Using `--skip-fetch` is the fastest way to confirm your code changes didn't
+break the scoring or modeling logic, and it works with no internet connection.
 
-## 3. Run the full pipeline (fetches fresh data first)
+## 3. Automate daily refresh (Windows Task Scheduler)
 
-```bash
-python main.py
+A PowerShell script is provided for hands-free daily runs:
+
+```powershell
+.\scripts\run_daily_pipeline.ps1
 ```
 
-This fetches fresh weather (NASA POWER, Open-Meteo) and soil (SoilGrids)
-data, runs both risk engines, and then runs the exact same freshness-aware
-downstream steps described in step 2 above. Use this when you want
-up-to-date raw data before everything downstream is refreshed. It needs an
-internet connection.
+This activates the virtual environment, runs `python main.py`, saves a
+timestamped log under `logs\daily_pipeline\`, and exits with code 1 on failure.
+Configure it as a Windows Task Scheduler task that runs daily at 6 AM — see
+`docs\DAILY_REFRESH_WINDOWS.md` for the full setup guide.
 
 Both `python main.py` and `python main.py --skip-fetch` are thin entry
 points into `src/pipeline/run_pipeline.py`, which is where the actual step
 list lives (`main.py` itself was not changed by the orchestration
 milestone). **Every standalone script for every step above still exists
 and can be run individually** (see step 7 below) for targeted debugging of
-one specific step — but the recommended workflow for normal use is the
-single `python main.py --skip-fetch` command, not running each script by
-hand. For example, the phenology-aware FAO-56 script can still be run on
+one specific step — but the recommended workflow for normal use is
+`python main.py` (full refresh with fetch) for the daily automated run, or
+`python main.py --skip-fetch` for fast offline rebuilds, not running each
+script by hand. For example, the phenology-aware FAO-56 script can still be run on
 its own:
 
 ```bash
@@ -151,6 +162,8 @@ After steps 1–6 above, you should see:
 - `data/processed/pipeline_run_metadata.json` contains a `step_results`
   array listing every freshness-aware step's name, status, and detail from
   the most recent run.
+- If a daily scheduled run completed, a timestamped log file will exist
+  under `logs/daily_pipeline/` (e.g. `daily_pipeline_2025-06-15_06-00-01.log`).
 
 ## 7. Google Earth Engine setup (Sentinel-2 prep phase)
 
