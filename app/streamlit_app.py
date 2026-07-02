@@ -11,6 +11,7 @@ from plotly.subplots import make_subplots
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.sections.fao56_model_comparison import render_fao56_model_comparison_page
+from app.sections.fao56_sensitivity_analysis import render_fao56_sensitivity_analysis_page
 from app.sections.irrigation_advisory import render_irrigation_advisory_page
 from src.utils.config import get_config
 from src.utils.soil_factor import soil_factor_label
@@ -42,6 +43,8 @@ FAO56_PHENOLOGY_WATER_BALANCE_PATH = config.path("fao56_phenology_water_balance_
 FAO56_MODEL_COMPARISON_CSV_PATH = config.path("fao56_model_comparison_csv")
 FAO56_MODEL_COMPARISON_SUMMARY_MD_PATH = config.path("fao56_model_comparison_summary_md")
 FORECAST_AWARE_ADVISORY_PATH = config.path("forecast_aware_irrigation_advisory_csv")
+FAO56_SENSITIVITY_CSV_PATH = config.path("fao56_sensitivity_analysis_csv")
+FAO56_SENSITIVITY_SUMMARY_MD_PATH = config.path("fao56_sensitivity_summary_md")
 PIPELINE_METADATA_PATH = config.path("pipeline_run_metadata_json")
 
 
@@ -296,6 +299,34 @@ def safe_load_fao56_model_comparison_data(path: Path, label: str) -> pd.DataFram
 
 def load_fao56_model_comparison_summary_text(path: Path) -> str | None:
     """Load the markdown summary for the FAO-56 model comparison, or return None if missing/unreadable."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+
+
+@st.cache_data
+def load_fao56_sensitivity_data(path: Path) -> pd.DataFrame:
+    """Load the FAO-56 sensitivity analysis CSV."""
+    df = pd.read_csv(path)
+    return df
+
+
+def safe_load_fao56_sensitivity_data(path: Path, label: str) -> pd.DataFrame | None:
+    """Load FAO-56 sensitivity CSV without crashing the dashboard if missing/malformed."""
+    try:
+        return load_fao56_sensitivity_data(path)
+    except FileNotFoundError:
+        st.info("Run `python main.py` to generate the FAO-56 sensitivity analysis output.")
+    except Exception as exc:
+        st.warning(f"{label} file could not be loaded ({exc.__class__.__name__}): {exc}")
+    return None
+
+
+def load_fao56_sensitivity_summary_text(path: Path) -> str | None:
+    """Load the markdown summary for the FAO-56 sensitivity analysis, or None if missing."""
     try:
         return path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -658,6 +689,20 @@ if FORECAST_AWARE_ADVISORY_PATH.exists():
         FORECAST_AWARE_ADVISORY_PATH, "Irrigation advisory"
     )
 
+fao56_sensitivity_df = None
+
+if FAO56_SENSITIVITY_CSV_PATH.exists():
+    fao56_sensitivity_df = safe_load_fao56_sensitivity_data(
+        FAO56_SENSITIVITY_CSV_PATH, "FAO-56 sensitivity analysis"
+    )
+
+fao56_sensitivity_summary_text = None
+
+if FAO56_SENSITIVITY_SUMMARY_MD_PATH.exists():
+    fao56_sensitivity_summary_text = load_fao56_sensitivity_summary_text(
+        FAO56_SENSITIVITY_SUMMARY_MD_PATH
+    )
+
 
 # ---------------------------------------------------------------------
 # Sidebar — navigation, study area, data source status
@@ -680,6 +725,7 @@ page = st.sidebar.radio(
         "Mango Phenology",
         "Phenology Water Balance",
         "FAO-56 Model Comparison",
+        "FAO-56 Sensitivity Analysis",
         "Irrigation Advisory",
         "What-if Simulator",
         "Raw Data",
@@ -699,6 +745,7 @@ render_status_badge("FAO-56 water balance (processed)", FAO56_WATER_BALANCE_PATH
 render_status_badge("Mango phenology calendar (processed)", PHENOLOGY_CALENDAR_PATH)
 render_status_badge("Phenology-aware FAO-56 water balance (processed)", FAO56_PHENOLOGY_WATER_BALANCE_PATH)
 render_status_badge("FAO-56 model comparison (processed)", FAO56_MODEL_COMPARISON_CSV_PATH)
+render_status_badge("FAO-56 sensitivity analysis (processed)", FAO56_SENSITIVITY_CSV_PATH)
 render_status_badge("Irrigation advisory (processed)", FORECAST_AWARE_ADVISORY_PATH)
 
 st.sidebar.divider()
@@ -2142,6 +2189,14 @@ elif page == "Phenology Water Balance":
 
 elif page == "FAO-56 Model Comparison":
     render_fao56_model_comparison_page(fao56_model_comparison_df, fao56_model_comparison_summary_text)
+
+
+# =======================================================================
+# PAGE: FAO-56 Sensitivity Analysis
+# =======================================================================
+
+elif page == "FAO-56 Sensitivity Analysis":
+    render_fao56_sensitivity_analysis_page(fao56_sensitivity_df, fao56_sensitivity_summary_text)
 
 
 # =======================================================================
