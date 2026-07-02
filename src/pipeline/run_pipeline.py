@@ -425,6 +425,8 @@ def main():
 
     if not success:
         sys.exit(1)
+    if failed_steps:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

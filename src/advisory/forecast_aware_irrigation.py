@@ -281,7 +281,7 @@ def _build_limitations(
     if staleness > 1:
         parts.append(
             f"FAO-56 status is {staleness} day(s) old (last date: {fao56_date}). "
-            "Re-run `python main.py --skip-fetch` to refresh before acting on this advisory."
+            "Re-run `python main.py` to fetch fresh data and refresh the advisory before acting on it."
         )
     if forecast_available:
         parts.append(

@@ -502,7 +502,7 @@ def build_fao56_sensitivity_analysis() -> bool:
 
     n_days = len(joined_df)
     date_range_str = (
-        f"{joined_df['date'].iloc[0].date()} – {joined_df['date'].iloc[-1].date()}"
+        f"{joined_df['date'].iloc[0].date()} - {joined_df['date'].iloc[-1].date()}"
     )
 
     log.info("Running %d scenarios over %d days (%s).",
@@ -576,13 +576,13 @@ def build_fao56_sensitivity_analysis() -> bool:
 
     print()
     print("=" * 62)
-    print("FAO-56 Sensitivity Analysis — console summary")
+    print("FAO-56 Sensitivity Analysis - console summary")
     print("=" * 62)
     print(f"  Date range:         {date_range_str}")
     print(f"  Days analysed:      {n_days}")
     print(f"  Scenarios run:      {len(results_df)}")
-    print(f"  (root_depth × p × kc_mult = "
-          f"{len(ROOT_DEPTH_VALUES)}×{len(DEPLETION_P_VALUES)}×{len(KC_MULTIPLIER_VALUES)})")
+    print(f"  (root_depth x p x kc_mult = "
+          f"{len(ROOT_DEPTH_VALUES)}x{len(DEPLETION_P_VALUES)}x{len(KC_MULTIPLIER_VALUES)})")
     print()
     print("  Baseline scenario:")
     print(f"    root_depth_m={baseline_root_depth}, p={baseline_p}, kc_mult=1.00")
@@ -591,20 +591,20 @@ def build_fao56_sensitivity_analysis() -> bool:
     print(f"    High-stress:   {bl['n_days_high_stress']} days ({bl['pct_days_high_stress']:.1f}%)")
     print()
     print("  Range across all 36 scenarios:")
-    print(f"    Mean ETc:      {etc_range[0]:.2f} – {etc_range[1]:.2f} mm/day")
-    print(f"    Mean depletion:{dep_range[0]:.1f} – {dep_range[1]:.1f} mm")
-    print(f"    High-stress:   {stress_range[0]} – {stress_range[1]} days")
+    print(f"    Mean ETc:      {etc_range[0]:.2f} - {etc_range[1]:.2f} mm/day")
+    print(f"    Mean depletion:{dep_range[0]:.1f} - {dep_range[1]:.1f} mm")
+    print(f"    High-stress:   {stress_range[0]} - {stress_range[1]} days")
     print()
     print("  Most conservative (most stress):")
     worst = results_df.loc[results_df["n_days_high_stress"].idxmax()]
     print(f"    root={worst['root_depth_m']:.1f}m, p={worst['depletion_fraction_p']:.2f}, "
-          f"kc×{worst['kc_multiplier']:.2f} → "
+          f"kc x{worst['kc_multiplier']:.2f} -> "
           f"{worst['n_days_high_stress']} High-stress days ({worst['pct_days_high_stress']:.1f}%)")
     print()
     print("  Least conservative (least stress):")
     best = results_df.loc[results_df["n_days_high_stress"].idxmin()]
     print(f"    root={best['root_depth_m']:.1f}m, p={best['depletion_fraction_p']:.2f}, "
-          f"kc×{best['kc_multiplier']:.2f} → "
+          f"kc x{best['kc_multiplier']:.2f} -> "
           f"{best['n_days_high_stress']} High-stress days ({best['pct_days_high_stress']:.1f}%)")
     print()
     print("  Outputs:")
