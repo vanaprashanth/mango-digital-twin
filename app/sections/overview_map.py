@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 
@@ -44,16 +45,64 @@ def render_overview_map_page(config, latest: "pd.Series", has_soil_adjusted_irri
 
     st.divider()
 
+    # -----------------------------------------------------------------------
+    # Study Area Map
+    # -----------------------------------------------------------------------
+    # Design decision: the map is intentionally zoomed in to the study area in
+    # Chittoor / Andhra Pradesh (zoom 8).  At this zoom level the viewport covers
+    # roughly southern Andhra Pradesh, Karnataka, and Tamil Nadu — the disputed
+    # northern borders (~2 000 km north) are entirely off-screen.
+    #
+    # The basemap style is "carto-positron", a minimal neutral tile layer that
+    # renders roads and terrain without prominently labelling or drawing
+    # administrative/political boundaries.  This dashboard does not use the
+    # basemap as an authoritative source of any political boundary.
+    # -----------------------------------------------------------------------
+
     st.subheader("Study Area Map")
 
     map_df = pd.DataFrame(
-        {"lat": [config.latitude], "lon": [config.longitude]}
+        {"lat": [config.latitude], "lon": [config.longitude], "location": ["Study orchard"]}
     )
-    st.map(map_df, zoom=10)
+
+    map_fig = px.scatter_mapbox(
+        map_df,
+        lat="lat",
+        lon="lon",
+        hover_name="location",
+        zoom=8,
+        height=450,
+        center={"lat": config.latitude, "lon": config.longitude},
+    )
+    map_fig.update_traces(marker=dict(size=14, color="red"))
+    map_fig.update_layout(
+        mapbox_style="carto-positron",
+        margin={"r": 0, "t": 0, "l": 0, "b": 0},
+    )
+    st.plotly_chart(map_fig, use_container_width=True, config={"scrollZoom": True})
+
     st.caption(
-        f"Latitude {config.latitude}, Longitude {config.longitude} — "
-        f"{config.study_area.name}, {config.study_area.district}, {config.study_area.state}, {config.study_area.country}"
+        f"\U0001f4cd {config.study_area.name}, {config.study_area.district} district, "
+        f"{config.study_area.state}, {config.study_area.country} "
+        f"\u2014 {config.latitude}\u00b0 N, {config.longitude}\u00b0 E"
     )
+    st.caption(
+        "Map is focused on the study orchard location in Andhra Pradesh. "
+        "Basemap boundary lines are provided by the tile provider and are not used "
+        "as the authoritative boundary source."
+    )
+
+    with st.expander("India boundary layer \u2014 planned improvement", expanded=False):
+        st.info(
+            "**Status: not yet implemented.**\n\n"
+            "A future update will overlay a reviewed India boundary on this map using "
+            "an official or Survey of India-sourced GeoJSON file. This will replace "
+            "dependence on the basemap tile provider for boundary rendering.\n\n"
+            "Until that reviewed boundary file is added to the project, this dashboard "
+            "deliberately avoids displaying a full India political map, because no "
+            "third-party basemap tile provider is used as the authoritative source of "
+            "India\u2019s boundaries, including Jammu & Kashmir and other sensitive regions."
+        )
 
     st.divider()
 
