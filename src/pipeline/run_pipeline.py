@@ -219,7 +219,7 @@ FRESHNESS_AWARE_STEPS = [
     FreshnessAwareStep(
         name="Forecast-aware irrigation advisory",
         build_fn=advisory_script.run_forecast_aware_advisory,
-        input_keys=["fao56_phenology_water_balance_csv", "forecast_risk_csv"],
+        input_keys=["fao56_interpolated_kc_water_balance_csv", "forecast_risk_csv"],
         output_keys=["forecast_aware_irrigation_advisory_csv"],
     ),
 ]

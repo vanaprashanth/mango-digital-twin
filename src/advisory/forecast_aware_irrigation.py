@@ -23,6 +23,11 @@ NOTE: Only daily forecast data is available from Open-Meteo in this project.
       applied to the next-24-hour (i.e. next-day) rainfall total.
       Rain probability is not available in the current Open-Meteo daily output.
 
+FAO-56 status input:
+  data/processed/muthukur_fao56_interpolated_kc_water_balance.csv
+  (smoothly interpolated Kc per crop stage — preferred over the step-function
+  phenology-aware model because it avoids abrupt Kc jumps at stage boundaries)
+
 Output CSV:
   data/processed/muthukur_forecast_aware_irrigation_advisory.csv
 
@@ -55,7 +60,7 @@ config = get_config()
 # ---------------------------------------------------------------------------
 # Paths (all resolved from config.yaml so only one place to change)
 # ---------------------------------------------------------------------------
-FAO56_PHENOLOGY_WB_PATH = config.path("fao56_phenology_water_balance_csv")
+FAO56_INTERPOLATED_KC_PATH = config.path("fao56_interpolated_kc_water_balance_csv")
 FORECAST_RISK_PATH = config.path("forecast_risk_csv")
 ADVISORY_OUTPUT_PATH = config.path("forecast_aware_irrigation_advisory_csv")
 
@@ -273,9 +278,11 @@ def _build_limitations(
     forecast_resolution: str,
 ) -> str:
     parts = [
-        "FAO-56 water-balance model is not locally calibrated; Kc values are assumed for this region and cultivar.",
+        "FAO-56 status is from the interpolated-Kc water balance "
+        "(smoothed Kc transitions between mango growth stages). "
+        "Kc values are not field-calibrated for this specific orchard or cultivar.",
         "No soil-moisture sensor validation — depletion estimates carry model uncertainty.",
-        "No irrigation-event records; both FAO-56 models are rainfed-only depletion balances.",
+        "No irrigation-event records; all FAO-56 models are rainfed-only depletion balances.",
     ]
     staleness = (today - fao56_date).days
     if staleness > 1:
@@ -311,21 +318,33 @@ def run_forecast_aware_advisory() -> Path:
     today = datetime.now().date()
     generated_at = datetime.now().isoformat(timespec="seconds")
 
-    # ── FAO-56 phenology water balance ────────────────────────────────────
-    if not FAO56_PHENOLOGY_WB_PATH.exists():
+    # ── FAO-56 interpolated-Kc water balance ──────────────────────────────
+    if not FAO56_INTERPOLATED_KC_PATH.exists():
         raise FileNotFoundError(
-            f"Required input not found: {FAO56_PHENOLOGY_WB_PATH}\n"
+            f"Required input not found: {FAO56_INTERPOLATED_KC_PATH}\n"
             "Run `python main.py --skip-fetch` to generate it."
         )
-    wb_df = _load_phenology_water_balance(FAO56_PHENOLOGY_WB_PATH)
+    wb_df = _load_phenology_water_balance(FAO56_INTERPOLATED_KC_PATH)
     if wb_df.empty:
-        raise ValueError(f"Phenology water balance file is empty: {FAO56_PHENOLOGY_WB_PATH}")
+        raise ValueError(f"Interpolated-Kc water balance file is empty: {FAO56_INTERPOLATED_KC_PATH}")
+
+    # Drop any rows where key computed fields are NaN — this can happen if the
+    # last row of the CSV was written incompletely (e.g. a truncated write
+    # during a previous pipeline run that did not finish cleanly).
+    wb_df = wb_df.dropna(subset=["ks", "water_stress_level"])
+    if wb_df.empty:
+        raise ValueError(
+            f"Interpolated-Kc water balance has no valid (non-NaN) rows for ks / "
+            f"water_stress_level: {FAO56_INTERPOLATED_KC_PATH}"
+        )
 
     latest = wb_df.iloc[-1]
     current_date: date = latest["date"].date()
     mango_stage: str = str(latest["mango_stage"])
     water_stress_level: str = str(latest["water_stress_level"])
-    kc: float = float(latest["kc"])
+    # interpolated_kc: smoothly interpolated Kc used for ETc this day (avoids
+    # step-function jumps at stage boundaries vs the stage_kc column).
+    kc: float = float(latest["interpolated_kc"])
     et0_mm_day: float = float(latest["et0_mm_day"])
     etc_mm_day: float = float(latest["etc_mm_day"])
     root_zone_depletion_mm: float = float(latest["root_zone_depletion_mm"])
