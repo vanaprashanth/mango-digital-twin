@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from app.sections.freshness import show_freshness_indicator
 
 
 def _risk_color(level: str) -> str:
@@ -22,6 +23,7 @@ def render_phenology_water_balance_page(
     """Render the Phenology Water Balance (phenology-aware FAO-56) dashboard page."""
 
     st.title("Phenology Water Balance (Phenology-Aware FAO-56)")
+    show_freshness_indicator(fao56_phenology_water_balance_df, label="Phenology water balance", staleness_warning_days=7)
 
     st.warning(
         "This is a simplified phenology-aware prototype. Kc values are assumed, not "

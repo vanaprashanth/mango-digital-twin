@@ -3,12 +3,15 @@ from __future__ import annotations
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from app.sections.freshness import show_freshness_indicator
 
 
 def render_historical_risk_page(df: pd.DataFrame) -> None:
     """Render the Historical Risk dashboard page."""
 
     st.title("Historical Risk")
+
+    show_freshness_indicator(df, label="Historical risk", staleness_warning_days=7)
 
     st.subheader("Time Range Filter")
 

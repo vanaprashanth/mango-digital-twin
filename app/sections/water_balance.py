@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+from app.sections.freshness import show_freshness_indicator
 
 
 def _risk_color(level: str) -> str:
@@ -21,6 +22,7 @@ def render_water_balance_page(fao56_water_balance_df: pd.DataFrame | None) -> No
     """Render the Water Balance (FAO-56) dashboard page."""
 
     st.title("Water Balance (FAO-56)")
+    show_freshness_indicator(fao56_water_balance_df, label="FAO-56 water balance", staleness_warning_days=7)
 
     st.warning(
         "This FAO-56 page is a simplified rainfed prototype. It does not yet include actual "

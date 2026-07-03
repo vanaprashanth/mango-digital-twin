@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+from app.sections.freshness import show_freshness_indicator
 
 
 def _risk_color(level: str) -> str:
@@ -21,6 +22,7 @@ def render_combined_intelligence_page(combined_feature_df: pd.DataFrame | None) 
     """Render the Combined Intelligence dashboard page."""
 
     st.title("Combined Intelligence")
+    show_freshness_indicator(combined_feature_df, label="Combined intelligence", staleness_warning_days=7)
 
     if combined_feature_df is None or combined_feature_df.empty:
         st.warning("Combined feature table file not found or could not be loaded.")

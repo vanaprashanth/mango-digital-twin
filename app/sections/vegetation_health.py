@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from app.sections.freshness import show_freshness_indicator
 
 
 def render_vegetation_health_page(
@@ -12,6 +13,7 @@ def render_vegetation_health_page(
     """Render the Vegetation Health (Sentinel-2) dashboard page."""
 
     st.title("Vegetation Health (Sentinel-2)")
+    show_freshness_indicator(vegetation_df, label="Vegetation health", staleness_warning_days=14)
 
     st.caption(
         "Satellite-derived vegetation/water indices from Sentinel-2 imagery, aggregated to one "

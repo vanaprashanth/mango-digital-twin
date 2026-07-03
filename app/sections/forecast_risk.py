@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from app.sections.freshness import show_freshness_indicator
 
 
 def _risk_color(level: str) -> str:
@@ -19,6 +20,7 @@ def render_forecast_risk_page(forecast_df: pd.DataFrame | None) -> None:
     """Render the Forecast Risk Intelligence dashboard page."""
 
     st.title("Forecast Risk Intelligence")
+    show_freshness_indicator(forecast_df, label="Forecast risk", staleness_warning_days=3)
 
     if forecast_df is None or forecast_df.empty:
         st.warning("Forecast risk file not found.")

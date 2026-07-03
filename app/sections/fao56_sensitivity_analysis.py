@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from app.sections.freshness import show_freshness_indicator
 
 
 def render_fao56_sensitivity_analysis_page(
@@ -12,6 +13,7 @@ def render_fao56_sensitivity_analysis_page(
     """Render the FAO-56 Sensitivity Analysis dashboard page."""
 
     st.title("FAO-56 Sensitivity Analysis")
+    show_freshness_indicator(fao56_sensitivity_df, label="FAO-56 sensitivity analysis", staleness_warning_days=7)
 
     st.caption(
         "This analysis tests how FAO-56 soil-water-balance results change under different "

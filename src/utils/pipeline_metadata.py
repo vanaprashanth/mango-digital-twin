@@ -94,6 +94,7 @@ OUTPUT_FILE_PATH_KEYS: dict[str, str] = {
     "forecast_aware_irrigation_advisory": "forecast_aware_irrigation_advisory_csv",
     "fao56_interpolated_kc_water_balance": "fao56_interpolated_kc_water_balance_csv",
     "fao56_sensitivity_analysis": "fao56_sensitivity_analysis_csv",
+    "et0_comparison": "et0_comparison_csv",
 }
 
 # Files to inspect for "latest available date" -- the freshness signal that

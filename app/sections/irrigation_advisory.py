@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+from app.sections.freshness import show_freshness_indicator
 
 
 def render_irrigation_advisory_page(irrigation_advisory_df: pd.DataFrame | None) -> None:
     """Render the Irrigation Advisory sidebar page."""
 
     st.title("Irrigation Advisory")
+    show_freshness_indicator(irrigation_advisory_df, label="Irrigation advisory", staleness_warning_days=3)
 
     st.caption(
         "Farmer-facing irrigation recommendation based on the phenology-aware "

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from app.sections.freshness import show_freshness_indicator
 
 
 def _risk_color(level: str) -> str:
@@ -19,6 +20,7 @@ def render_overview_map_page(config, latest: "pd.Series", has_soil_adjusted_irri
     """Render the Overview & Map dashboard page."""
 
     st.title("\U0001f96d Sensor-Free Mango Digital Twin")
+    show_freshness_indicator(label="Overview", staleness_warning_days=0)
     st.caption(f"{config.study_area.name}, {config.study_area.district} district, {config.study_area.state}")
 
     st.subheader("Latest Digital Twin Status")

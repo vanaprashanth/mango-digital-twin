@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+from app.sections.freshness import show_freshness_indicator
 
 
 def render_raw_data_page(
@@ -15,6 +16,7 @@ def render_raw_data_page(
     """Render the Raw Processed Data dashboard page."""
 
     st.title("Raw Processed Data")
+    show_freshness_indicator(df, label="Raw processed data", staleness_warning_days=7)
 
     st.write("### Historical Risk Data")
     with st.expander("Historical risk table (last 20 rows)", expanded=False):

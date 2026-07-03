@@ -76,6 +76,7 @@ from src.validation import compare_fao56_models as model_comparison_script
 from src.advisory import forecast_aware_irrigation as advisory_script
 from src.water_balance import fao56_interpolated_kc_water_balance as interpolated_kc_script
 from src.validation import fao56_sensitivity_analysis as sensitivity_analysis_script
+from src.validation import compare_et0_openmeteo_vs_fao56 as et0_comparison_script
 from src.utils.config import get_config
 from src.utils.logger import get_logger
 from src.utils.pipeline_metadata import (
@@ -221,6 +222,12 @@ FRESHNESS_AWARE_STEPS = [
         build_fn=advisory_script.run_forecast_aware_advisory,
         input_keys=["fao56_interpolated_kc_water_balance_csv", "forecast_risk_csv"],
         output_keys=["forecast_aware_irrigation_advisory_csv"],
+    ),
+    FreshnessAwareStep(
+        name="ET0 source comparison (Open-Meteo vs FAO-56)",
+        build_fn=et0_comparison_script.build_et0_comparison,
+        input_keys=["open_meteo_csv", "fao56_water_balance_csv"],
+        output_keys=["et0_comparison_csv", "et0_comparison_summary_md"],
     ),
 ]
 

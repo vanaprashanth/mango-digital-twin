@@ -24,6 +24,7 @@ from app.sections.forecast_risk import render_forecast_risk_page
 from app.sections.overview_map import render_overview_map_page
 from app.sections.what_if_simulator import render_what_if_simulator_page
 from app.sections.raw_data import render_raw_data_page
+from app.sections.et0_validation import render_et0_validation_page
 from src.utils.config import get_config
 from src.utils.soil_factor import soil_factor_label
 from src.utils.pipeline_metadata import load_metadata_json
@@ -56,6 +57,8 @@ FAO56_MODEL_COMPARISON_SUMMARY_MD_PATH = config.path("fao56_model_comparison_sum
 FORECAST_AWARE_ADVISORY_PATH = config.path("forecast_aware_irrigation_advisory_csv")
 FAO56_SENSITIVITY_CSV_PATH = config.path("fao56_sensitivity_analysis_csv")
 FAO56_SENSITIVITY_SUMMARY_MD_PATH = config.path("fao56_sensitivity_summary_md")
+ET0_COMPARISON_CSV_PATH = config.path("et0_comparison_csv")
+ET0_COMPARISON_SUMMARY_MD_PATH = config.path("et0_comparison_summary_md")
 PIPELINE_METADATA_PATH = config.path("pipeline_run_metadata_json")
 
 
@@ -553,6 +556,24 @@ if FAO56_SENSITIVITY_SUMMARY_MD_PATH.exists():
         FAO56_SENSITIVITY_SUMMARY_MD_PATH
     )
 
+et0_comparison_df = None
+
+if ET0_COMPARISON_CSV_PATH.exists():
+    try:
+        et0_comparison_df = pd.read_csv(ET0_COMPARISON_CSV_PATH)
+        if "date" in et0_comparison_df.columns:
+            et0_comparison_df["date"] = pd.to_datetime(et0_comparison_df["date"])
+    except Exception:
+        et0_comparison_df = None
+
+et0_comparison_summary_text = None
+
+if ET0_COMPARISON_SUMMARY_MD_PATH.exists():
+    try:
+        et0_comparison_summary_text = ET0_COMPARISON_SUMMARY_MD_PATH.read_text(encoding="utf-8")
+    except Exception:
+        et0_comparison_summary_text = None
+
 
 # ---------------------------------------------------------------------
 # Sidebar — navigation, study area, data source status
@@ -576,6 +597,7 @@ page = st.sidebar.radio(
         "Phenology Water Balance",
         "FAO-56 Model Comparison",
         "FAO-56 Sensitivity Analysis",
+        "ET0 Validation",
         "Irrigation Advisory",
         "What-if Simulator",
         "Raw Data",
@@ -597,6 +619,7 @@ render_status_badge("Phenology-aware FAO-56 water balance (processed)", FAO56_PH
 render_status_badge("FAO-56 model comparison (processed)", FAO56_MODEL_COMPARISON_CSV_PATH)
 render_status_badge("FAO-56 sensitivity analysis (processed)", FAO56_SENSITIVITY_CSV_PATH)
 render_status_badge("Irrigation advisory (processed)", FORECAST_AWARE_ADVISORY_PATH)
+render_status_badge("ET0 comparison (processed)", ET0_COMPARISON_CSV_PATH)
 
 st.sidebar.divider()
 render_data_freshness_section()
@@ -697,6 +720,14 @@ elif page == "FAO-56 Model Comparison":
 
 elif page == "FAO-56 Sensitivity Analysis":
     render_fao56_sensitivity_analysis_page(fao56_sensitivity_df, fao56_sensitivity_summary_text)
+
+
+# =======================================================================
+# PAGE: ET0 Validation
+# =======================================================================
+
+elif page == "ET0 Validation":
+    render_et0_validation_page(et0_comparison_df, et0_comparison_summary_text)
 
 
 # =======================================================================

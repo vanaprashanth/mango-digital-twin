@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+from app.sections.freshness import show_freshness_indicator
 
 from src.utils.soil_factor import soil_factor_label
 
@@ -24,6 +25,7 @@ def render_soil_intelligence_page(
     """Render the Soil Intelligence dashboard page."""
 
     st.title("Soil Intelligence")
+    show_freshness_indicator(label="Soil intelligence", staleness_warning_days=0)
 
     if soil_df is None or soil_df.empty:
         st.warning("SoilGrids data file not found.")

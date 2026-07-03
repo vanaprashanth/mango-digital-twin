@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import streamlit as st
+from app.sections.freshness import show_freshness_indicator
 
 
 def _risk_color(level: str) -> str:
@@ -188,6 +189,7 @@ def render_what_if_simulator_page(latest: "object") -> None:
     """Render the What-if Simulator dashboard page."""
 
     st.title("What-if Simulator")
+    show_freshness_indicator(label="What-if simulator", staleness_warning_days=0)
 
     st.write("Test how mango risk changes if rainfall, temperature, or humidity changes from the latest valid weather condition.")
 

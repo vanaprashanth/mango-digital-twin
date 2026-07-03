@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from app.sections.freshness import show_freshness_indicator
 
 
 def render_fao56_model_comparison_page(
@@ -12,6 +13,7 @@ def render_fao56_model_comparison_page(
     """Render the FAO-56 Model Comparison dashboard page."""
 
     st.title("FAO-56 Model Comparison: Constant-Kc vs Phenology-Aware")
+    show_freshness_indicator(fao56_comparison_df, label="FAO-56 model comparison", staleness_warning_days=7)
 
     st.caption(
         "A standalone model-to-model comparison of the two FAO-56 soil-water balance "

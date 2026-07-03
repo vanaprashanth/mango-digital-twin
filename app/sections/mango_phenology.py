@@ -3,12 +3,14 @@ from __future__ import annotations
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from app.sections.freshness import show_freshness_indicator
 
 
 def render_mango_phenology_page(phenology_df: pd.DataFrame | None) -> None:
     """Render the Mango Phenology Calendar dashboard page."""
 
     st.title("Mango Phenology Calendar")
+    show_freshness_indicator(phenology_df, label="Mango phenology", staleness_warning_days=7)
 
     st.warning(
         "This is a simplified, regional (Andhra Pradesh / South India) mango phenology "
