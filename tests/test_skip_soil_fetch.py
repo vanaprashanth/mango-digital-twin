@@ -106,3 +106,69 @@ class TestNoCacheGuard:
             with pytest.raises(SystemExit) as exc_info:
                 main()
         assert exc_info.value.code != 0
+
+
+# ---------------------------------------------------------------------------
+# Open-Meteo cached fallback in fetch_open_meteo.py
+# ---------------------------------------------------------------------------
+
+class TestOpenMeteoCachedFallback:
+    """
+    Tests for the cached-CSV fallback in fetch_open_meteo.main().
+    No real network calls are made.
+    """
+
+    def test_returns_without_raising_when_cached_csv_exists(self, tmp_path):
+        """
+        If the fetch fails but a cached CSV exists, main() should log a
+        warning and return without raising.
+        """
+        import pandas as pd
+        from unittest.mock import patch, MagicMock
+        from src.weather.fetch_open_meteo import main as open_meteo_main
+
+        # Write a minimal cached CSV
+        cached_csv = tmp_path / "open_meteo.csv"
+        df = pd.DataFrame({"date": ["2026-01-01"], "openmeteo_temperature_avg_c": [25.0]})
+        df.to_csv(cached_csv, index=False)
+
+        fake_config = MagicMock()
+        fake_config.path.return_value = cached_csv
+        fake_config.latitude = 13.3
+        fake_config.longitude = 78.6
+        fake_config.study_area.name = "Test"
+        fake_config.study_area.district = "Test"
+        fake_config.forecast_weather = {"past_days": 7, "forecast_days": 7, "timezone": "UTC"}
+
+        def raise_timeout(*args, **kwargs):
+            raise RuntimeError("Simulated Open-Meteo timeout")
+
+        with patch("src.weather.fetch_open_meteo.get_config", return_value=fake_config):
+            with patch("src.weather.fetch_open_meteo.fetch_open_meteo_weather", side_effect=raise_timeout):
+                # Should NOT raise — cached CSV exists
+                open_meteo_main()
+
+    def test_raises_when_no_cached_csv_and_fetch_fails(self, tmp_path):
+        """
+        If the fetch fails and no cached CSV exists, main() must re-raise.
+        """
+        from unittest.mock import patch, MagicMock
+        from src.weather.fetch_open_meteo import main as open_meteo_main
+
+        missing_csv = tmp_path / "missing_open_meteo.csv"
+
+        fake_config = MagicMock()
+        fake_config.path.return_value = missing_csv
+        fake_config.latitude = 13.3
+        fake_config.longitude = 78.6
+        fake_config.study_area.name = "Test"
+        fake_config.study_area.district = "Test"
+        fake_config.forecast_weather = {"past_days": 7, "forecast_days": 7, "timezone": "UTC"}
+
+        def raise_timeout(*args, **kwargs):
+            raise RuntimeError("Simulated Open-Meteo timeout")
+
+        with patch("src.weather.fetch_open_meteo.get_config", return_value=fake_config):
+            with patch("src.weather.fetch_open_meteo.fetch_open_meteo_weather", side_effect=raise_timeout):
+                with pytest.raises(RuntimeError, match="Simulated Open-Meteo timeout"):
+                    open_meteo_main()

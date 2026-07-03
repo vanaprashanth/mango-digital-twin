@@ -146,9 +146,31 @@ def main():
             timezone=config.forecast_weather["timezone"],
         )
         validate_forecast_weather(weather_df)
-    except Exception:
+    except Exception as exc:
         log.error("Open-Meteo fetch FAILED. See details below.")
-        raise
+        # If a cached CSV already exists, reuse it so the pipeline can
+        # continue (historical weather + all downstream steps still run).
+        # This makes the daily automated refresh resilient to transient
+        # Open-Meteo API outages or GitHub Actions network timeouts.
+        # If NO cache exists this is a fresh environment and we must fail.
+        if output_path.exists():
+            log.warning(
+                "Open-Meteo fetch failed but cached CSV exists — reusing "
+                "cached data: %s", output_path
+            )
+            log.warning(
+                "Cached Open-Meteo data may be stale. Re-run the pipeline "
+                "when the API is reachable to refresh forecast data."
+            )
+            print()
+            print(
+                "WARNING: Open-Meteo fetch failed. Reusing cached CSV "
+                f"({output_path.name}) from a previous run. "
+                "Forecast pages may show stale data until the API is reachable."
+            )
+            print(f"Fetch error: {exc}")
+            return   # do not re-raise; pipeline continues with cached CSV
+        raise   # no cached CSV: fail clearly
 
     weather_df.to_csv(output_path, index=False)
 
