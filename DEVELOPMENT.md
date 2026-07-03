@@ -196,7 +196,28 @@ docker run --rm mango-digital-twin python main.py
   management — Sentinel-2 pages will show cached data or "file not found"
   until a GEE session is configured.
 
-## 7. Check syntax across the whole project
+## 7. Automated data refresh (GitHub Actions)
+
+A workflow at `.github/workflows/daily-data-refresh.yml` runs the pipeline
+automatically on a schedule and commits refreshed data back to the repository.
+
+- **Schedule:** daily at 02:30 UTC (~08:00 IST)
+- **Trigger manually:** GitHub → Actions → Daily Data Refresh → Run workflow
+- **What it does:** runs `python main.py`, then stages only `data/raw/` and
+  `data/processed/`. If any file changed, it commits with the message
+  `Data: automated daily refresh` and pushes. If nothing changed, it exits
+  cleanly without creating a commit.
+- **Streamlit Cloud** picks up the new commit and redeploys automatically,
+  so the live dashboard at https://mango-digital-twin.streamlit.app always
+  shows the latest data snapshot.
+- **Manual refresh:** run `python main.py` locally, then:
+  ```bash
+  git add data/raw data/processed
+  git commit -m "Data: manual refresh"
+  git push
+  ```
+
+## 8. Check syntax across the whole project
 
 ```bash
 python -m py_compile $(find . -name "*.py" -not -path "./.venv/*" -not -path "./venv/*")
@@ -224,7 +245,7 @@ After steps 1–6 above, you should see:
 - If a daily scheduled run completed, a timestamped log file will exist
   under `logs/daily_pipeline/` (e.g. `daily_pipeline_2025-06-15_06-00-01.log`).
 
-## 7. Google Earth Engine setup (Sentinel-2 prep phase)
+## 9. Google Earth Engine setup (Sentinel-2 prep phase)
 
 This project is starting to prepare for Sentinel-2 satellite imagery via
 Google Earth Engine (GEE). As of now this is **setup only** — no satellite
