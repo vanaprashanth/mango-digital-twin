@@ -724,6 +724,47 @@ A sensor-free, phenology-aware, Bayesian digital twin for mango orchard risk for
 
 ---
 
-## 18. Disclaimer
+## 18. Streamlit Community Cloud Deployment
+
+### Entry point
+
+```
+app/streamlit_app.py
+```
+
+Configure this in the Streamlit Cloud "Advanced settings" -> "Main file path" field when you create a new app from the GitHub repository.
+
+### Python version
+
+Python **3.11** is recommended. Set it in Streamlit Cloud -> Advanced settings -> Python version.
+
+### Required files (already committed)
+
+| Path | Purpose |
+|------|---------|
+| `requirements.txt` | Python dependencies installed by Streamlit Cloud automatically |
+| `configs/config.yaml` | Project configuration (paths, thresholds, coordinates) |
+| `data/raw/` | Committed sample weather and soil CSVs used by the dashboard |
+| `data/processed/` | Committed processed outputs (risk scores, water balance, advisory, etc.) |
+
+### Data refresh
+
+The deployed dashboard reads the CSVs committed to the repository. It does **not** fetch live data on startup.
+
+To refresh data:
+
+1. Run `python main.py` locally (or in a CI job).
+2. Commit the updated `data/` files.
+3. Push to GitHub -- Streamlit Cloud redeploys automatically.
+
+Alternatively, set up a GitHub Actions workflow on a `cron` schedule to run `python main.py` and commit the results.
+
+### Google Earth Engine
+
+Sentinel-2 vegetation pages require an authenticated GEE session. On Streamlit Cloud, add your service-account key as a Streamlit secret and initialise `ee` from `st.secrets` before any `ee.*` call. Without this, Sentinel-2 pages display cached data or a "file not found" message -- all other pages work normally.
+
+---
+
+## 19. Disclaimer
 
 This project is a research and prototype system. The risk scores are not final agronomic recommendations. Field validation, expert calibration, and local farmer observations are required before operational use.
