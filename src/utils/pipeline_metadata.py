@@ -56,6 +56,7 @@ HOW TO USE
 import csv
 import datetime as dt
 import json
+import subprocess
 from pathlib import Path
 
 import pandas as pd
@@ -125,6 +126,50 @@ NEAR_REAL_TIME_NOTE = (
 def utc_now() -> dt.datetime:
     """Current time as a timezone-aware UTC datetime."""
     return dt.datetime.now(dt.timezone.utc)
+
+
+def _git_commit() -> str:
+    """
+    Return the current git commit hash (40-char hex string), or "unknown"
+    if git is unavailable, the command fails, or this is not a git repo.
+    Never raises.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            commit = result.stdout.strip()
+            if commit:
+                return commit
+    except Exception as exc:
+        log.debug("Could not read git commit hash: %s", exc)
+    return "unknown"
+
+
+def _git_branch() -> str:
+    """
+    Return the current git branch name, or "unknown" if git is unavailable,
+    the command fails, or this is not a git repo. Never raises.
+    In a detached-HEAD state, returns the commit hash or "unknown".
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            branch = result.stdout.strip()
+            if branch:
+                return branch
+    except Exception as exc:
+        log.debug("Could not read git branch: %s", exc)
+    return "unknown"
 
 
 def _iso(timestamp: dt.datetime | None) -> str | None:
@@ -275,6 +320,8 @@ def build_pipeline_metadata(
         "timezone": "UTC",
         "pipeline_mode": pipeline_mode,
         "status": status,
+        "git_commit": _git_commit(),
+        "git_branch": _git_branch(),
         "source_files": source_files,
         "output_files": output_files,
         "row_counts": row_counts,
