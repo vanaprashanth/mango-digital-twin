@@ -8,6 +8,7 @@ API key.
 """
 
 import sys
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -54,15 +55,40 @@ def fetch_open_meteo_weather(
         "forecast_days": forecast_days,
     }
 
-    try:
-        response = requests.get(OPEN_METEO_URL, params=params, timeout=30)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as exc:
+    # Retry up to MAX_ATTEMPTS times with increasing timeouts.
+    # Open-Meteo is usually fast but can be slow under load or from
+    # GitHub Actions runners — a single 30-second timeout is too brittle.
+    MAX_ATTEMPTS = 3
+    TIMEOUTS = [45, 75, 120]   # seconds per attempt
+    RETRY_DELAYS = [5, 15]     # seconds to wait between attempts
+
+    last_exc: Exception | None = None
+    for attempt, timeout in enumerate(TIMEOUTS, start=1):
+        try:
+            log.info(
+                "Open-Meteo request attempt %d/%d (timeout=%ds)...",
+                attempt, MAX_ATTEMPTS, timeout,
+            )
+            response = requests.get(OPEN_METEO_URL, params=params, timeout=timeout)
+            response.raise_for_status()
+            break   # success — exit retry loop
+        except requests.exceptions.RequestException as exc:
+            last_exc = exc
+            log.warning(
+                "Open-Meteo attempt %d/%d failed: %s",
+                attempt, MAX_ATTEMPTS, exc,
+            )
+            if attempt < MAX_ATTEMPTS:
+                delay = RETRY_DELAYS[attempt - 1]
+                log.info("Retrying in %ds...", delay)
+                time.sleep(delay)
+    else:
+        # All attempts exhausted
         raise RuntimeError(
-            f"Open-Meteo API request failed: {exc}. "
+            f"Open-Meteo API request failed after {MAX_ATTEMPTS} attempts: {last_exc}. "
             "Check your internet connection and try again. "
             f"URL: {OPEN_METEO_URL}"
-        ) from exc
+        ) from last_exc
 
     data = response.json()
 
