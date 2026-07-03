@@ -137,7 +137,66 @@ classification, soil-factor calculation, and `-999` missing-value
 cleaning. Tests use only the real local config or small in-memory sample
 data — no network calls, no cloud, no GPU.
 
-## 6. Check syntax across the whole project
+
+## 6. Run with Docker (optional)
+
+Docker lets you run the dashboard in a fully reproducible environment without
+installing Python or dependencies locally.
+
+### Build the image
+
+```bash
+docker build -t mango-digital-twin .
+```
+
+The first build takes a few minutes (downloading Python and pip packages).
+Subsequent rebuilds are fast because the dependency layer is cached
+separately from the source code.
+
+### Run the dashboard
+
+```bash
+docker run --rm -p 8501:8501 mango-digital-twin
+```
+
+Then open **http://localhost:8501** in a browser.
+
+**Important:** The container starts with the committed sample CSVs already
+in `data/`.  The dashboard is fully browsable without a live data fetch.
+However, data is **not** automatically refreshed when the container starts —
+the weather/satellite fetches happen only when you explicitly run the
+pipeline.
+
+### Refresh data inside a running container
+
+To pull fresh weather data and regenerate all downstream outputs inside the
+container, run the pipeline in a separate one-off container:
+
+```bash
+docker run --rm mango-digital-twin python main.py --skip-fetch
+```
+
+Or for a full live fetch (requires internet access from the container):
+
+```bash
+docker run --rm mango-digital-twin python main.py
+```
+
+### Streamlit Cloud notes
+
+- Streamlit Cloud clones your GitHub repo and runs the dashboard directly
+  from the committed files.
+- The committed `data/` sample CSVs will be available at startup so the
+  dashboard displays without a live fetch.
+- To keep data fresh on Streamlit Cloud, commit updated data files after each
+  pipeline run, or set up a GitHub Actions workflow that runs
+  `python main.py` on a schedule and commits the results.
+- Google Earth Engine requires authentication (`earthengine authenticate`)
+  and cannot be done interactively on Streamlit Cloud without secrets
+  management — Sentinel-2 pages will show cached data or "file not found"
+  until a GEE session is configured.
+
+## 7. Check syntax across the whole project
 
 ```bash
 python -m py_compile $(find . -name "*.py" -not -path "./.venv/*" -not -path "./venv/*")

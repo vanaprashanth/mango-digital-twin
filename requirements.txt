@@ -1,16 +1,23 @@
+# Runtime (actively imported by current code)
 pandas
 numpy
 requests
-python-dotenv
+pyyaml
 streamlit
 plotly
-scikit-learn
-geopandas
-shapely
-pyyaml
+
+# Testing
 pytest
 
-# Sentinel-2 / Google Earth Engine (setup phase only — see DEVELOPMENT.md
-# "Google Earth Engine setup" section). Installing this does NOT authenticate
-# you automatically; you still need to run `earthengine authenticate` once.
+# Planned / future (not yet imported by current code):
+#   python-dotenv  -- for .env-based config during cloud deployment
+#   scikit-learn   -- for ML models (Phase 6+, not started yet)
+#   geopandas      -- for GIS boundary layers (planned, see ROADMAP.md)
+#   shapely        -- geometry primitives (depends on geopandas work)
+
+# Sentinel-2 / Google Earth Engine
+# Installing this does NOT authenticate you automatically; run
+#   earthengine authenticate
+# once before using any ee.* functionality.
+# See DEVELOPMENT.md "Google Earth Engine setup" section.
 earthengine-api
