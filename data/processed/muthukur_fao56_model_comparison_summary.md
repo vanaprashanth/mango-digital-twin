@@ -4,8 +4,8 @@ A model-to-model comparison of the two FAO-56 soil-water balance prototypes buil
 
 ## Input Files
 
-- Constant-Kc FAO-56 output: `E:\mango-digital-twin\data\processed\muthukur_fao56_water_balance.csv`
-- Phenology-aware FAO-56 output: `E:\mango-digital-twin\data\processed\muthukur_fao56_phenology_water_balance.csv`
+- Constant-Kc FAO-56 output: `/home/runner/work/mango-digital-twin/mango-digital-twin/data/processed/muthukur_fao56_water_balance.csv`
+- Phenology-aware FAO-56 output: `/home/runner/work/mango-digital-twin/mango-digital-twin/data/processed/muthukur_fao56_phenology_water_balance.csv`
 
 ## Method
 
