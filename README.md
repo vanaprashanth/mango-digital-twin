@@ -4,6 +4,10 @@ A Python-based sensor-free digital twin prototype for mango orchard risk intelli
 
 This project focuses on the Muthukur / Peddapanjani mango-growing area in Chittoor district, Andhra Pradesh, India. It estimates irrigation risk, heat stress risk, and disease-friendly weather risk without using physical IoT sensors.
 
+**Live dashboard:** https://mango-digital-twin.streamlit.app
+
+> **Note:** The Streamlit Cloud app reads the committed CSV snapshot. To refresh the live dashboard, run `python main.py` locally, commit the updated data outputs, and push to GitHub.
+
 ---
 
 ## 1. Project Goal
