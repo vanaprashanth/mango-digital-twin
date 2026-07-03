@@ -21,6 +21,13 @@ first failure, exactly like before:
   With `--skip-fetch`, only steps 3 and 5 run (recompute risk from cached
   raw data).
 
+  With `--skip-soil-fetch`, step 2 (SoilGrids) is omitted and the cached
+  soil CSV on disk is reused. Steps 1, 3, 4, and 5 run normally. This is
+  safe for automated daily refresh because SoilGrids data is static/slow-
+  changing and the API is occasionally slow or unavailable. The cached CSV
+  must already exist on disk; if it does not, the pipeline fails clearly
+  before running any steps.
+
 LAYER 2 — freshness-aware downstream steps (new this milestone). These wrap
 the existing standalone build scripts (Sentinel-2 daily aggregation,
 combined feature table, mango phenology calendar, constant-Kc FAO-56,
@@ -51,7 +58,8 @@ cached on disk.
 
 Usage:
     python src/pipeline/run_pipeline.py
-    python src/pipeline/run_pipeline.py --skip-fetch   # reuse cached raw data, just recompute risk + downstream
+    python src/pipeline/run_pipeline.py --skip-fetch        # reuse cached raw data, just recompute risk + downstream
+    python src/pipeline/run_pipeline.py --skip-soil-fetch   # fetch weather but reuse cached soil CSV
 """
 
 import argparse
@@ -95,6 +103,15 @@ log = get_logger(__name__)
 PIPELINE_STEPS = [
     ("NASA POWER historical weather", fetch_weather.main),
     ("SoilGrids soil intelligence", fetch_soilgrids.main),
+    ("Historical mango risk engine", historical_risk_engine.main),
+    ("Open-Meteo recent/forecast weather", fetch_open_meteo.main),
+    ("Forecast mango risk engine", open_meteo_risk_engine.main),
+]
+
+# --skip-soil-fetch: fetch weather + run risk engines, but skip the live
+# SoilGrids API call and reuse the cached soil CSV on disk instead.
+SKIP_SOIL_STEPS = [
+    ("NASA POWER historical weather", fetch_weather.main),
     ("Historical mango risk engine", historical_risk_engine.main),
     ("Open-Meteo recent/forecast weather", fetch_open_meteo.main),
     ("Forecast mango risk engine", open_meteo_risk_engine.main),
@@ -370,13 +387,48 @@ def main():
     parser.add_argument(
         "--skip-fetch",
         action="store_true",
-        help="Skip the network fetch steps and only recompute risk scores and downstream outputs from cached raw data.",
+        help="Skip all network fetch steps and only recompute risk scores and downstream outputs from cached raw data.",
+    )
+    parser.add_argument(
+        "--skip-soil-fetch",
+        action="store_true",
+        help=(
+            "Skip the SoilGrids API fetch and reuse the cached soil CSV on disk. "
+            "NASA POWER and Open-Meteo are still fetched. "
+            "Fails clearly if no cached soil CSV exists. "
+            "Recommended for automated daily refresh (GitHub Actions) to avoid "
+            "transient SoilGrids API timeouts."
+        ),
     )
     args = parser.parse_args()
 
-    steps = RISK_ONLY_STEPS if args.skip_fetch else PIPELINE_STEPS
+    if args.skip_fetch and args.skip_soil_fetch:
+        print("Error: --skip-fetch and --skip-soil-fetch cannot be used together.")
+        sys.exit(1)
 
-    mode_label = "risk-engines only (cached raw data)" if args.skip_fetch else "full pipeline"
+    if args.skip_fetch:
+        steps = RISK_ONLY_STEPS
+        mode_label = "risk-engines only (cached raw data)"
+    elif args.skip_soil_fetch:
+        # Guard: cached soil CSV must already exist — fail fast and clearly if not.
+        config = get_config()
+        soil_csv = config.path("soilgrids_csv")
+        if not soil_csv.exists():
+            print(
+                f"Error: --skip-soil-fetch requires a cached soil CSV at:\n"
+                f"  {soil_csv}\n"
+                f"Run without --skip-soil-fetch first to fetch and cache the soil data."
+            )
+            log.error("--skip-soil-fetch used but no cached soil CSV at %s", soil_csv)
+            sys.exit(1)
+        log.info("--skip-soil-fetch: reusing cached soil CSV at %s", soil_csv)
+        print(f"Soil fetch skipped — reusing cached CSV: {soil_csv}")
+        steps = SKIP_SOIL_STEPS
+        mode_label = "weather fetch + risk engines (cached soil data)"
+    else:
+        steps = PIPELINE_STEPS
+        mode_label = "full pipeline"
+
     log.info("Pipeline run starting. Mode: %s", mode_label)
     print("Sensor-Free Mango Digital Twin — pipeline run")
     print(f"Mode: {mode_label}")

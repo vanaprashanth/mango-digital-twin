@@ -27,7 +27,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run pipeline
-        run: python main.py
+        run: python main.py --skip-soil-fetch
 
       - name: Configure git
         run: |
