@@ -26,8 +26,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run pipeline
-        run: python main.py --skip-soil-fetch
+      - name: Run pipeline (weather + Sentinel-2 refresh if GEE credentials available)
+        # --skip-soil-fetch  : reuse cached SoilGrids CSV (static data, avoids API timeouts)
+        # --refresh-sentinel2: attempt Sentinel-2 GEE fetch; skips gracefully if
+        #                      GEE_SERVICE_ACCOUNT_KEY secret is not configured.
+        # To enable Sentinel-2 refresh: add a repository secret named
+        # GEE_SERVICE_ACCOUNT_KEY containing the full JSON of a Google Cloud
+        # service account key that has Earth Engine API access.
+        env:
+          GEE_SERVICE_ACCOUNT_KEY: ${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}
+        run: python main.py --skip-soil-fetch --refresh-sentinel2
 
       - name: Configure git
         run: |

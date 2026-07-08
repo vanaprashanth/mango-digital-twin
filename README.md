@@ -18,6 +18,8 @@ This project focuses on the Muthukur / Peddapanjani mango-growing area in Chitto
 
 *(Replace placeholder images in `docs/images/` with actual dashboard screenshots.)*
 
+> **Vegetation data note:** Sentinel-2 satellites revisit the same location approximately every 5 days. The Vegetation Health page may show data that is several days or weeks old — this is expected. The daily automated refresh attempts to pull the latest cloud-filtered scene from Google Earth Engine; the date will only advance when a new valid scene is available.
+
 ---
 
 ## 1. Project Goal
@@ -771,11 +773,16 @@ To refresh data:
 2. Commit the updated `data/` files.
 3. Push to GitHub -- Streamlit Cloud redeploys automatically.
 
-Alternatively, set up a GitHub Actions workflow on a `cron` schedule to run `python main.py` and commit the results.
+To enable automated Sentinel-2 vegetation refresh, add a `GEE_SERVICE_ACCOUNT_KEY`
+repository secret (see DEVELOPMENT.md section 7.1 for setup instructions).
 
 ### Google Earth Engine
 
-Sentinel-2 vegetation pages require an authenticated GEE session. On Streamlit Cloud, add your service-account key as a Streamlit secret and initialise `ee` from `st.secrets` before any `ee.*` call. Without this, Sentinel-2 pages display cached data or a "file not found" message -- all other pages work normally.
+Sentinel-2 vegetation pages require an authenticated GEE session. In GitHub Actions,
+set the `GEE_SERVICE_ACCOUNT_KEY` repository secret (see DEVELOPMENT.md section 7.1).
+On Streamlit Cloud, add your service-account key as a Streamlit secret and initialise
+`ee` from `st.secrets` before any `ee.*` call. Without this, Sentinel-2 pages display
+cached data or a "file not found" message — all other pages work normally.
 
 ---
 

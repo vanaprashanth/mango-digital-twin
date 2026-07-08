@@ -38,6 +38,79 @@ from src.utils.logger import get_logger
 log = get_logger(__name__)
 
 
+def try_init_earth_engine(project_id: str | None = None) -> tuple[bool, str]:
+    """
+    Attempt to initialize the Earth Engine Python API silently and
+    non-interactively.  Returns (True, reason) on success or
+    (False, reason) on any failure — never raises.
+
+    Authentication priority
+    -----------------------
+    1. GEE_SERVICE_ACCOUNT_KEY environment variable — a JSON string
+       containing a Google Cloud service account key (the content of the
+       .json key file you downloaded from IAM).  This is the recommended
+       path for GitHub Actions: store the JSON as a repository secret
+       named GEE_SERVICE_ACCOUNT_KEY, then expose it as an env var in the
+       workflow step.
+    2. GOOGLE_APPLICATION_CREDENTIALS environment variable — the standard
+       GCP path (set this to the *path* of a service account key file on
+       disk, not the key content).
+    3. Local user credentials set by `earthengine authenticate` — the
+       normal interactive path for local development.
+
+    This function is intentionally separate from check_earth_engine_setup(),
+    which is an interactive diagnostic/setup helper.  This one is designed
+    to be called from automated code that should never open a browser or
+    block on user input.
+    """
+    import json
+    import os
+
+    try:
+        import ee
+    except ImportError:
+        return False, "earthengine-api package is not installed"
+
+    if project_id is None:
+        try:
+            config = get_config()
+            project_id = config.remote_sensing.get("gee_project_id")
+        except Exception as exc:
+            return False, f"could not read gee_project_id from config: {exc}"
+
+    if not project_id:
+        return False, "no gee_project_id configured in configs/config.yaml under remote_sensing"
+
+    # Priority 1 — GEE_SERVICE_ACCOUNT_KEY (JSON string in env var)
+    key_json = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
+    if key_json:
+        try:
+            key_data = json.loads(key_json)
+            email = key_data.get("client_email")
+            if not email:
+                return False, "GEE_SERVICE_ACCOUNT_KEY JSON is missing 'client_email' field"
+            credentials = ee.ServiceAccountCredentials(
+                email, key_data=json.dumps(key_data)
+            )
+            ee.Initialize(credentials=credentials, project=project_id)
+            return True, f"initialized with service account ({email})"
+        except json.JSONDecodeError as exc:
+            return False, f"GEE_SERVICE_ACCOUNT_KEY is not valid JSON: {exc}"
+        except Exception as exc:
+            return False, f"GEE_SERVICE_ACCOUNT_KEY set but initialization failed: {exc}"
+
+    # Priority 2/3 — GOOGLE_APPLICATION_CREDENTIALS or local user credentials
+    try:
+        ee.Initialize(project=project_id)
+        return True, "initialized with local/application-default credentials"
+    except Exception as exc:
+        return False, (
+            f"Earth Engine initialization failed: {exc}. "
+            "Run 'earthengine authenticate' for local use, or set "
+            "GEE_SERVICE_ACCOUNT_KEY for automated/CI use."
+        )
+
+
 def check_earth_engine_setup() -> bool:
     """
     Try to import and initialize the Earth Engine Python API.

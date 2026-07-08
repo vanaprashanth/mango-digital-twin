@@ -76,6 +76,8 @@ from src.weather import fetch_weather, fetch_open_meteo
 from src.soil import fetch_soilgrids
 from src.risk import historical_risk_engine, open_meteo_risk_engine
 from src.remote_sensing import aggregate_sentinel2_timeseries as sentinel2_aggregation_script
+from src.remote_sensing import build_sentinel2_index_timeseries as sentinel2_timeseries_script
+from src.remote_sensing.gee_setup import try_init_earth_engine
 from src.features import build_feature_table as feature_table_script
 from src.phenology import mango_phenology_calendar as phenology_calendar_script
 from src.water_balance import fao56_water_balance as constant_kc_script
@@ -400,10 +402,29 @@ def main():
             "transient SoilGrids API timeouts."
         ),
     )
+    parser.add_argument(
+        "--refresh-sentinel2",
+        action="store_true",
+        help=(
+            "Attempt to refresh the Sentinel-2 vegetation index time series from "
+            "Google Earth Engine before running downstream freshness-aware steps. "
+            "Requires GEE credentials: set the GEE_SERVICE_ACCOUNT_KEY environment "
+            "variable (JSON service account key) for CI/GitHub Actions, or run "
+            "'earthengine authenticate' once for local use. "
+            "If GEE credentials are unavailable, this step is skipped with a warning "
+            "and the pipeline continues using the cached Sentinel-2 CSV. "
+            "Cannot be combined with --skip-fetch."
+        ),
+    )
     args = parser.parse_args()
 
     if args.skip_fetch and args.skip_soil_fetch:
         print("Error: --skip-fetch and --skip-soil-fetch cannot be used together.")
+        sys.exit(1)
+
+    if args.skip_fetch and args.refresh_sentinel2:
+        print("Error: --refresh-sentinel2 cannot be combined with --skip-fetch "
+              "(--skip-fetch skips all network fetches, including GEE).")
         sys.exit(1)
 
     if args.skip_fetch:
@@ -425,9 +446,13 @@ def main():
         print(f"Soil fetch skipped — reusing cached CSV: {soil_csv}")
         steps = SKIP_SOIL_STEPS
         mode_label = "weather fetch + risk engines (cached soil data)"
+        if args.refresh_sentinel2:
+            mode_label += " + Sentinel-2 GEE refresh"
     else:
         steps = PIPELINE_STEPS
         mode_label = "full pipeline"
+        if args.refresh_sentinel2:
+            mode_label += " + Sentinel-2 GEE refresh"
 
     log.info("Pipeline run starting. Mode: %s", mode_label)
     print("Sensor-Free Mango Digital Twin — pipeline run")
@@ -436,6 +461,70 @@ def main():
 
     run_started_at = utc_now()
     success = run_steps(steps)
+
+    # ------------------------------------------------------------------
+    # Optional Sentinel-2 GEE refresh (runs before freshness-aware layer
+    # so the aggregation + combined-feature steps pick up the new data)
+    # ------------------------------------------------------------------
+    if args.refresh_sentinel2:
+        print("=" * 70)
+        print("Sentinel-2 vegetation index refresh (Google Earth Engine)")
+        print("=" * 70)
+        log.info("--refresh-sentinel2: attempting GEE initialization...")
+        gee_ok, gee_reason = try_init_earth_engine()
+        if not gee_ok:
+            log.warning(
+                "--refresh-sentinel2: GEE initialization failed — skipping "
+                "Sentinel-2 fetch and reusing cached timeseries CSV. "
+                "Reason: %s", gee_reason,
+            )
+            print()
+            print(
+                "WARNING: Sentinel-2 refresh skipped — GEE credentials not "
+                "available or initialization failed."
+            )
+            print(f"  Reason: {gee_reason}")
+            print(
+                "  The pipeline will continue using the cached Sentinel-2 "
+                "timeseries CSV (if one exists)."
+            )
+            print(
+                "  To enable automated Sentinel-2 refresh, set the "
+                "GEE_SERVICE_ACCOUNT_KEY environment variable or run "
+                "'earthengine authenticate' for local use."
+            )
+            print()
+        else:
+            log.info(
+                "--refresh-sentinel2: GEE ready (%s) — running timeseries build.",
+                gee_reason,
+            )
+            print(f"GEE initialized: {gee_reason}")
+            print()
+            sentinel2_start = time.time()
+            try:
+                s2_ok = sentinel2_timeseries_script.build_index_timeseries()
+            except Exception as exc:
+                s2_ok = False
+                log.error("Sentinel-2 timeseries build raised: %s", exc)
+                traceback.print_exc()
+            s2_elapsed = time.time() - sentinel2_start
+            if s2_ok:
+                log.info(
+                    "Sentinel-2 timeseries build completed in %.1fs.", s2_elapsed
+                )
+                print(f"Sentinel-2 timeseries refreshed in {s2_elapsed:.1f}s.")
+            else:
+                log.warning(
+                    "Sentinel-2 timeseries build did not complete (%.1fs) — "
+                    "cached CSV will be used by downstream steps.",
+                    s2_elapsed,
+                )
+                print(
+                    f"WARNING: Sentinel-2 timeseries build did not complete "
+                    f"({s2_elapsed:.1f}s) — downstream steps will use cached CSV."
+                )
+            print()
 
     print("=" * 70)
     print("Freshness-aware downstream steps")

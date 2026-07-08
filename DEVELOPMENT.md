@@ -203,10 +203,10 @@ automatically on a schedule and commits refreshed data back to the repository.
 
 - **Schedule:** daily at 02:30 UTC (~08:00 IST)
 - **Trigger manually:** GitHub → Actions → Daily Data Refresh → Run workflow
-- **What it does:** runs `python main.py`, then stages only `data/raw/` and
-  `data/processed/`. If any file changed, it commits with the message
-  `Data: automated daily refresh` and pushes. If nothing changed, it exits
-  cleanly without creating a commit.
+- **What it does:** runs `python main.py --skip-soil-fetch --refresh-sentinel2`,
+  then stages only `data/raw/` and `data/processed/`. If any file changed, it
+  commits with the message `Data: automated daily refresh` and pushes. If
+  nothing changed, it exits cleanly without creating a commit.
 - **Streamlit Cloud** picks up the new commit and redeploys automatically,
   so the live dashboard at https://mango-digital-twin.streamlit.app always
   shows the latest data snapshot.
@@ -216,6 +216,53 @@ automatically on a schedule and commits refreshed data back to the repository.
   git commit -m "Data: manual refresh"
   git push
   ```
+
+### 7.1 Sentinel-2 vegetation refresh in GitHub Actions
+
+The workflow passes `--refresh-sentinel2` on every run.  The Sentinel-2 GEE
+fetch step is **optional** — if Google Earth Engine credentials are not
+configured, the step prints a clear warning and the pipeline continues using
+the cached `muthukur_sentinel2_index_timeseries.csv`.
+
+To enable live Sentinel-2 refresh from the workflow:
+
+1. Create a Google Cloud service account with the Earth Engine API enabled
+   and download its JSON key file.
+2. In your GitHub repository, go to **Settings → Secrets and variables →
+   Actions → New repository secret**.
+3. Name the secret `GEE_SERVICE_ACCOUNT_KEY` and paste the **entire content**
+   of the JSON key file as the value.
+4. The workflow reads this secret automatically and passes it to the pipeline
+   via the `GEE_SERVICE_ACCOUNT_KEY` environment variable.
+
+Important notes about Sentinel-2 refresh cadence:
+- Sentinel-2 satellites revisit the same location approximately every **5 days**
+  (10 days per satellite, two satellites). The workflow checks daily, but the
+  vegetation date in the dashboard will only advance when a new cloud-filtered
+  scene is available.
+- Cloud cover can prevent a clean scene from being available even on revisit
+  days. During monsoon season or heavy cloud cover, the dashboard may show
+  vegetation data that is several weeks old — this is expected and shown as a
+  freshness warning on the Vegetation Health page.
+- SoilGrids data is static/slow-changing and does not need daily refresh;
+  `--skip-soil-fetch` reuses the cached CSV to avoid SoilGrids API timeouts.
+
+### 7.2 Using `--refresh-sentinel2` locally
+
+```bash
+# Full pipeline + Sentinel-2 GEE refresh (requires earthengine authenticate)
+python main.py --refresh-sentinel2
+
+# Skip slow SoilGrids API + refresh Sentinel-2 (same as GitHub Actions)
+python main.py --skip-soil-fetch --refresh-sentinel2
+
+# Offline: recompute all downstream outputs from cached data only
+python main.py --skip-fetch
+```
+
+`--refresh-sentinel2` cannot be combined with `--skip-fetch` (which skips
+all network fetches including GEE).  It gracefully skips the GEE step and
+continues if credentials are not available.
 
 ## 8. Check syntax across the whole project
 
