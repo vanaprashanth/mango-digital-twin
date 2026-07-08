@@ -1,21 +1,21 @@
 # ET0 Comparison: Open-Meteo vs FAO-56 Penman-Monteith
 
-*Generated: 2026-07-07T06:30:30*
+*Generated: 2026-07-08T05:37:34*
 
 ## Summary
 
 | Metric | Value |
 |--------|-------|
 | Matched days | 3 |
-| Date range | 2026-06-30 to 2026-07-02 |
-| Open-Meteo date coverage | 2026-06-30 to 2026-07-13 |
-| FAO-56 date coverage | 2025-01-01 to 2026-07-02 |
-| Mean Open-Meteo ET0 | 5.183 mm/day |
-| Mean FAO-56 ET0 | 4.162 mm/day |
-| Mean difference (Open-Meteo − FAO-56) | 1.021 mm/day |
-| Mean absolute difference | 1.021 mm/day |
+| Date range | 2026-07-01 to 2026-07-03 |
+| Open-Meteo date coverage | 2026-07-01 to 2026-07-14 |
+| FAO-56 date coverage | 2025-01-01 to 2026-07-03 |
+| Mean Open-Meteo ET0 | 4.983 mm/day |
+| Mean FAO-56 ET0 | 3.998 mm/day |
+| Mean difference (Open-Meteo − FAO-56) | 0.985 mm/day |
+| Mean absolute difference | 0.985 mm/day |
 | Max absolute difference | 1.083 mm/day |
-| Pearson correlation | 0.997 |
+| Pearson correlation | 0.827 |
 
 ## Interpretation
 
