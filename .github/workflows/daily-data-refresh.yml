@@ -5,6 +5,13 @@ on:
   schedule:
     - cron: "30 2 * * *"   # 02:30 UTC = ~08:00 IST
 
+# Prevent overlapping scheduled/manual runs from conflicting.
+# cancel-in-progress: false so an in-progress refresh is never interrupted
+# mid-commit; a second trigger waits in the queue instead.
+concurrency:
+  group: daily-data-refresh
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -49,5 +56,8 @@ jobs:
             echo "No data changes detected — skipping commit."
           else
             git commit -m "Data: automated daily refresh"
-            git push
+            # Rebase on latest origin/master in case another commit landed
+            # while the pipeline was running (avoids "fetch first" rejection).
+            git pull --rebase origin master
+            git push origin HEAD:master
           fi
