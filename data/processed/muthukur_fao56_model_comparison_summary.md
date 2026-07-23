@@ -13,12 +13,12 @@ The two CSVs above are joined on `date` (inner join — only dates present in bo
 
 ## Key Findings
 
-- Matched days compared: **559**
-- Date range: **2025-01-01** to **2026-07-17**
-- Mean ETc difference (phenology - constant): **+0.087 mm/day**
-- Mean absolute ETc difference: **0.535 mm/day**
+- Matched days compared: **563**
+- Date range: **2025-01-01** to **2026-07-18**
+- Mean ETc difference (phenology - constant): **+0.083 mm/day**
+- Mean absolute ETc difference: **0.536 mm/day**
 - Largest single-day ETc difference: **+1.328 mm/day** on **2026-04-27**
-- Days where the Low/Medium/High water-stress label changed: **5.4%** of matched days
+- Days where the Low/Medium/High water-stress label changed: **5.3%** of matched days
 
 ### Biggest single-day ETc swings
 
@@ -38,8 +38,8 @@ The two CSVs above are joined on `date` (inner join — only dates present in bo
 | Flowering | 92 | +0.000 | 13 |
 | Fruit development | 122 | +1.023 | 0 |
 | Fruit set | 56 | +0.587 | 0 |
-| Maturity / harvest | 60 | +0.268 | 2 |
-| Rest / vegetative phase | 137 | -0.723 | 15 |
+| Maturity / harvest | 61 | +0.268 | 2 |
+| Rest / vegetative phase | 140 | -0.724 | 15 |
 
 ## Limitations
 
