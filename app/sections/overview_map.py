@@ -16,7 +16,12 @@ def _risk_color(level: str) -> str:
         return "\U0001f7e2 Low"
 
 
-def render_overview_map_page(config, latest: "pd.Series", has_soil_adjusted_irrigation: bool) -> None:
+def render_overview_map_page(
+    config,
+    latest: "pd.Series",
+    has_soil_adjusted_irrigation: bool,
+    combined_feature_df: "pd.DataFrame | None" = None,
+) -> None:
     """Render the Overview & Map dashboard page."""
 
     st.title("\U0001f96d Sensor-Free Mango Digital Twin")
@@ -134,6 +139,120 @@ def render_overview_map_page(config, latest: "pd.Series", has_soil_adjusted_irri
 
     with weather_col4:
         st.metric(label="7-day rainfall", value=f"{latest['rainfall_7day_mm']:.2f} mm")
+
+    st.divider()
+
+    # -----------------------------------------------------------------------
+    # Remote Sensing Freshness
+    # -----------------------------------------------------------------------
+    st.subheader("Remote Sensing Freshness")
+
+    if combined_feature_df is None or combined_feature_df.empty:
+        st.info(
+            "Combined feature table not available. "
+            "Run `python main.py` to generate remote sensing freshness data."
+        )
+    else:
+        _cf = combined_feature_df.sort_values("date").iloc[-1]
+
+        def _rs_str(val, fallback: str = "N/A") -> str:
+            """Safely format a potentially NaN/None/empty combined-table value."""
+            if val is None:
+                return fallback
+            try:
+                if pd.isna(val):
+                    return fallback
+            except (TypeError, ValueError):
+                pass
+            s = str(val).strip()
+            return s if s else fallback
+
+        def _days_str(raw) -> str:
+            """Format a days-since float/int into a readable string."""
+            if raw is None:
+                return "N/A"
+            try:
+                if pd.isna(raw):
+                    return "N/A"
+                return f"{int(float(raw))} days ago"
+            except (TypeError, ValueError):
+                return "N/A"
+
+        # Sentinel-2 fields
+        s2_date_str = _rs_str(_cf.get("sentinel2_date"))
+        s2_days_str = _days_str(_cf.get("days_since_sentinel2_observation"))
+        s2_freshness = _rs_str(_cf.get("vegetation_data_freshness"), "Missing")
+
+        # Sentinel-1 fields — column may be absent in CSVs generated before S1 support
+        _has_s1_cols = "sentinel1_freshness_level" in combined_feature_df.columns
+        if _has_s1_cols:
+            s1_date_str = _rs_str(_cf.get("sentinel1_date"))
+            s1_days_str = _days_str(_cf.get("days_since_sentinel1_observation"))
+            s1_freshness = _rs_str(_cf.get("sentinel1_freshness_level"), "Missing")
+        else:
+            s1_date_str = s1_days_str = "N/A"
+            s1_freshness = "Missing"
+
+        # Two-column layout: S2 left, S1 right
+        rs_col1, rs_col2 = st.columns(2)
+
+        with rs_col1:
+            st.markdown("**Sentinel-2 Optical**")
+            st.metric("Last observation", s2_date_str)
+            st.metric("Days since", s2_days_str)
+            st.metric("Freshness", s2_freshness)
+
+        with rs_col2:
+            st.markdown("**Sentinel-1 SAR (Cloudy-Season Fallback)**")
+            if not _has_s1_cols:
+                st.info(
+                    "SAR fallback not available yet. "
+                    "Run `python main.py --refresh-sentinel2` with GEE credentials."
+                )
+            else:
+                st.metric("Last SAR observation", s1_date_str)
+                st.metric("Days since", s1_days_str)
+                st.metric("SAR freshness", s1_freshness)
+
+        # Fallback status banner
+        _s2_recent = s2_freshness in ("Fresh", "Moderate")
+        _s1_recent = _has_s1_cols and s1_freshness in ("Fresh", "Moderate")
+        _s2_missing = s2_freshness == "Missing"
+        _s1_missing = not _has_s1_cols or s1_freshness == "Missing"
+
+        if _s2_missing and _s1_missing:
+            st.warning(
+                "⚠️ **Remote sensing unavailable** — no Sentinel-2 or Sentinel-1 data "
+                "found. Run `python main.py --refresh-sentinel2` with GEE credentials configured."
+            )
+        elif not _s2_recent and _s1_recent:
+            st.info(
+                "📡 **SAR fallback active** — Sentinel-2 optical data is stale, likely "
+                "due to cloud cover. Sentinel-1 SAR provides radar-based proxy signals "
+                "for cloudy-season continuity."
+            )
+        elif _s2_recent and _s1_recent:
+            st.success(
+                "✅ **Optical and SAR both recent** — Sentinel-2 optical and Sentinel-1 "
+                "SAR data are both current."
+            )
+        elif _s2_recent:
+            st.success(
+                "✅ **Optical observation current.** "
+                "Sentinel-1 SAR data is stale or unavailable."
+            )
+        else:
+            st.warning(
+                "⚠️ **Remote sensing stale** — both Sentinel-2 optical and Sentinel-1 "
+                "SAR data are stale or missing. Run `python main.py --refresh-sentinel2` "
+                "with GEE credentials configured."
+            )
+
+        st.caption(
+            "Sentinel-2 is optical and may be stale during cloudy periods. "
+            "Sentinel-1 SAR provides radar-based proxy continuity — not NDVI or "
+            "field-calibrated soil moisture."
+        )
 
     st.divider()
 

@@ -654,7 +654,7 @@ st.sidebar.caption(
 # =======================================================================
 
 if page == "Overview & Map":
-    render_overview_map_page(config, latest, has_soil_adjusted_irrigation)
+    render_overview_map_page(config, latest, has_soil_adjusted_irrigation, combined_feature_df=combined_feature_df)
 
 
 # =======================================================================
