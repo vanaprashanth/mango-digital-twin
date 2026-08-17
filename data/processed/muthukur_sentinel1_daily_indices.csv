@@ -25,7 +25,7 @@ date,vv_mean,vh_mean,vv_vh_ratio_mean,orbit_pass,scene_count,latitude,longitude,
 2025-05-23,-11.558986595657528,-18.007434022439888,6.44844742678236,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
 2025-05-28,-10.577372839435052,-17.701336825558762,7.123963986123711,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
 2025-06-04,-11.849468214526295,-18.46172467344661,6.612256458920319,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
-2025-06-09,-8.767684574335227,-16.654268492565407,7.88658391823018,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-06-09,-8.76768457433523,-16.654268492565407,7.886583918230178,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
 2025-06-16,-12.085778900222405,-18.917082773485856,6.831303873263453,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
 2025-06-21,-8.18679968759435,-16.796074367715363,8.609274680121013,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
 2025-06-28,-12.40371174611788,-19.33954408848182,6.935832342363939,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
@@ -95,4 +95,4 @@ date,vv_mean,vh_mean,vv_vh_ratio_mean,orbit_pass,scene_count,latitude,longitude,
 2026-07-24,-13.57671528961281,-21.1200494559063,7.543334166293491,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
 2026-07-29,-11.521418800670322,-20.309565438512895,8.788146637842576,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
 2026-08-05,-13.666661011532376,-20.938209602981395,7.2715485914490205,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
-2026-08-10,-12.26310978173698,-21.143674032626677,8.880564250889694,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-08-10,-12.26310978173698,-21.14367403262668,8.880564250889702,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
