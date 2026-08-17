@@ -18,7 +18,7 @@ This project focuses on the Muthukur / Peddapanjani mango-growing area in Chitto
 
 *(Replace placeholder images in `docs/images/` with actual dashboard screenshots.)*
 
-> **Vegetation data note:** Sentinel-2 satellites revisit the same location approximately every 5 days. The Vegetation Health page may show data that is several days or weeks old — this is expected. The daily automated refresh attempts to pull the latest cloud-filtered scene from Google Earth Engine; the date will only advance when a new valid scene is available.
+> **Remote sensing data note:** Sentinel-2 satellites revisit the same location approximately every 5 days. The Remote Sensing Health page may show optical data that is several days or weeks old during cloudy periods — this is expected, not a pipeline failure. When Sentinel-2 optical imagery is unavailable due to cloud cover, Sentinel-1 SAR radar backscatter (VV/VH) provides cloudy-season continuity via proxy signals. The daily automated refresh (GitHub Actions cron + GEE service account) attempts to pull the latest cloud-filtered Sentinel-2 scene and the latest Sentinel-1 SAR pass from Google Earth Engine.
 
 ---
 
@@ -31,6 +31,9 @@ Instead of installing field sensors, this system uses:
 - NASA POWER for historical daily weather
 - Open-Meteo for recent and forecast weather
 - SoilGrids for soil texture and soil health indicators
+- Google Earth Engine for satellite remote sensing:
+  - Sentinel-2 optical vegetation indices (NDVI, NDWI, NDMI, NDRE) — cloud-filtered, ~5-day revisit
+  - Sentinel-1 SAR radar backscatter (VV/VH) — cloudy-season fallback; proxy signals only, not field-calibrated
 - Python-based risk models
 - Streamlit dashboard for visualization and what-if simulation
 
@@ -53,9 +56,11 @@ The current MVP includes:
 - Monthly risk summary
 - What-if simulation for rainfall, temperature, and humidity changes
 - Scenario explanation and advisory output
-- Sentinel-2 vegetation intelligence (NDVI, NDWI, NDMI, NDRE) via Google Earth Engine, aggregated to one row per day
-- A Vegetation Health dashboard page showing satellite-derived greenness/moisture/canopy-stress trends
-- A combined weather + soil + vegetation feature table joining historical risk data with the nearest-previous (never future) Sentinel-2 observation and static soil properties
+- Sentinel-2 optical vegetation intelligence (NDVI, NDWI, NDMI, NDRE) via Google Earth Engine, aggregated to one row per day, with greenness / moisture / canopy-stress interpretation labels
+- Sentinel-1 SAR cloudy-season fallback (VV/VH radar backscatter) via Google Earth Engine (`COPERNICUS/S1_GRD`, IW mode, DESCENDING orbit preferred), aggregated to one daily row with VV/VH level labels. SAR penetrates cloud cover and provides directional proxy signals when Sentinel-2 optical imagery is unavailable. **Important:** VV and VH are uncalibrated proxy signals — they correlate loosely with surface roughness, soil moisture, and canopy volume but are not direct measurements and have not been validated against field observations at Muthukur.
+- Automated Sentinel-2 and Sentinel-1 daily refresh via GitHub Actions using a GEE service-account key (`GEE_SERVICE_ACCOUNT_KEY` repository secret); refreshed data is committed back automatically and the Streamlit Cloud dashboard updates without manual intervention
+- A Remote Sensing Health dashboard page with two sections: (1) Sentinel-2 Optical Vegetation Indices — index trend charts with cloud-cover staleness explanation (stale = cloudy period, not pipeline failure); (2) Sentinel-1 SAR Cloudy-Season Fallback — VV/VH trend charts with a freshness-aware SAR status indicator and radar proxy disclaimer
+- A combined weather + soil + vegetation feature table joining historical risk data with the nearest-previous (never future) Sentinel-2 observation and, optionally, the nearest-previous Sentinel-1 SAR observation; each source has a freshness-level column (Fresh / Moderate / Stale / Missing)
 - A Combined Intelligence dashboard page that interprets weather risk, soil conditions, and vegetation health together, with freshness-aware warnings
 - A standalone FAO-56 Penman-Monteith soil-water balance prototype (ET0, ETc, root-zone depletion, Ks water-stress coefficient, TAW, RAW)
 - A Water Balance dashboard page showing the FAO-56 output, marked as a simplified rainfed prototype
@@ -132,6 +137,38 @@ Variables used:
 - Bulk density
 - Cation exchange capacity
 
+### Google Earth Engine — Sentinel-2 Optical
+
+Used for cloud-filtered vegetation index time series (~5-day revisit).
+
+Indices computed per scene and aggregated to one daily row:
+
+- NDVI (Normalized Difference Vegetation Index) — vegetation greenness
+- NDWI (Normalized Difference Water Index) — surface water / canopy water signal
+- NDMI (Normalized Difference Moisture Index) — vegetation moisture
+- NDRE (Normalized Difference Red Edge Index) — chlorophyll / canopy stress signal
+
+Scenes with more than 20% CLOUDY_PIXEL_PERCENTAGE are excluded. Optical data can be
+several days or weeks old during sustained cloudy periods — this is an expected
+data-availability gap, not a pipeline error.
+
+### Google Earth Engine — Sentinel-1 SAR (Cloudy-Season Fallback)
+
+Used for radar backscatter proxy signals during periods when Sentinel-2 optical imagery
+is unavailable due to cloud cover. SAR (Synthetic Aperture Radar) penetrates cloud
+cover and provides daily-scale revisit independent of optical conditions.
+
+Collection: `COPERNICUS/S1_GRD`, IW mode, VV + VH polarisations, DESCENDING orbit
+preferred (falls back to all passes if no DESCENDING scenes are found).
+
+- **VV** — co-polarisation backscatter (dB); proxy for surface roughness and soil moisture
+- **VH** — cross-polarisation backscatter (dB); proxy for vegetation volume / canopy density
+
+**Important limitation:** VV and VH backscatter values correlate loosely with surface
+conditions and canopy structure, but have not been calibrated against field observations
+at Muthukur or specifically for mango orchards. They are directional proxy signals
+only — not direct soil-moisture measurements and not replacements for Sentinel-2 NDVI.
+
 ---
 
 ## 5. Project Architecture
@@ -142,6 +179,9 @@ Public Data Sources
         |-- NASA POWER historical weather
         |-- Open-Meteo forecast weather
         |-- SoilGrids soil properties
+        |-- Google Earth Engine
+        |       |-- Sentinel-2 optical (NDVI / NDWI / NDMI / NDRE)
+        |       `-- Sentinel-1 SAR fallback (VV / VH backscatter, proxy signals)
         |
         v
 Python Data Ingestion
@@ -153,13 +193,17 @@ Feature Engineering
         |-- Temperature stress features
         |-- Humidity/rainfall disease features
         |-- Soil water-retention factor
+        |-- Nearest-prior satellite join (S2 + S1, no future leakage)
         |
         v
-Risk Engine
+Risk Engine + FAO-56 Water Balance + Advisory
         |
-        |-- Irrigation risk
+        |-- Irrigation risk (weather-only + soil-adjusted)
         |-- Heat stress risk
         |-- Disease-friendly weather risk
+        |-- FAO-56 ET0 / ETc / root-zone depletion / Ks
+        |-- Phenology-aware / interpolated-Kc Kc models
+        |-- Forecast-aware irrigation advisory (rule-based)
         |
         v
 Streamlit Dashboard
@@ -167,6 +211,8 @@ Streamlit Dashboard
         |-- Historical trends
         |-- Forecast intelligence
         |-- Soil intelligence
+        |-- Remote sensing health (Sentinel-2 optical + Sentinel-1 SAR)
+        |-- Water balance / phenology
         |-- What-if simulation
         |-- Advisory recommendations
 ```
@@ -621,7 +667,7 @@ in the sidebar:
 - **Historical Risk** — date filter, rainfall/temperature/risk-score trends, risk summary, monthly risk summary, highest-risk months
 - **Forecast Risk** — forecast date range, forecast irrigation/heat/disease risk (weather-only and soil-adjusted), forecast trends, forecast risk table, forecast advisory
 - **Soil Intelligence** — soil properties, soil-adjusted irrigation risk, soil interpretation notes, SoilGrids summary table
-- **Vegetation Health** — Sentinel-2 NDVI/NDWI/NDMI/NDRE trends, latest reading, greenness/moisture/canopy-stress interpretation, raw daily and image-level tables
+- **Remote Sensing Health** — two sections: (1) *Sentinel-2 Optical Vegetation Indices* — NDVI/NDWI/NDMI/NDRE trends, latest reading, greenness/moisture/canopy-stress interpretation labels, staleness explained as cloudy-period gap (not a pipeline failure); (2) *Sentinel-1 SAR Cloudy-Season Fallback* — VV/VH radar backscatter trend charts, freshness-aware SAR status indicator (current / recent / stale), radar proxy disclaimer, raw daily SAR table
 - **Combined Intelligence** — combined weather + soil + vegetation view: latest status metrics, date/freshness filters, risk and vegetation trend charts, a dual-axis irrigation-risk-vs-NDVI chart, freshness counts, water-stress/disease/combined-stress/staleness interpretation rules, and the raw combined table
 - **Water Balance** — FAO-56 soil-water balance output: latest ET0, ETc, root-zone depletion, Ks water-stress coefficient, TAW, RAW; ET0+ETc, rainfall+ETc, depletion (with RAW/TAW reference lines), and Ks trend charts; a water-stress-level count chart; interpretation notes; and the raw FAO-56 table. Carries an explicit disclaimer that this is a simplified rainfed prototype.
 - **Mango Phenology** — current growth stage, stage descriptions and sensitivities, stage counts and timeline, monthly stage distribution.
@@ -697,6 +743,12 @@ Completed:
 - **FAO-56 sensitivity analysis** (`src/validation/fao56_sensitivity_analysis.py`): 36-scenario full factorial analysis varying root depth, depletion fraction, and Kc multiplier. Outputs: `data/processed/muthukur_fao56_sensitivity_analysis.csv` and `data/processed/muthukur_fao56_sensitivity_summary.md`. First explicit uncertainty-quantification step in the project. Now the eighth freshness-aware pipeline step — regenerated automatically by `python main.py --skip-fetch`. Not yet on the dashboard. See section 11 above.
 - **Daily pipeline refresh automation** (`scripts/run_daily_pipeline.ps1`): a PowerShell script that activates the virtual environment, runs `python main.py`, saves timestamped logs under `logs/daily_pipeline/`, and exits with a non-zero status on failure. Configured via Windows Task Scheduler for daily 6 AM runs. See `docs/DAILY_REFRESH_WINDOWS.md` for the full setup guide.
 
+- **Sentinel-1 SAR cloudy-season fallback** (`src/remote_sensing/build_sentinel1_sar_timeseries.py`, `src/remote_sensing/aggregate_sentinel1_timeseries.py`): radar backscatter (VV/VH) from `COPERNICUS/S1_GRD` via GEE, aggregated to one daily row with VV/VH level labels; optional nearest-prior SAR join in the combined feature table with `sentinel1_freshness_level` column. Refreshed automatically alongside Sentinel-2 when `--refresh-sentinel2` is passed. Proxy signals only — not field-calibrated.
+- **Automated GEE daily refresh via GitHub Actions** (`--refresh-sentinel2` pipeline flag, `GEE_SERVICE_ACCOUNT_KEY` service-account auth): Sentinel-2 optical and Sentinel-1 SAR are both refreshed on a daily cron schedule in CI/CD; updated data is committed back to the repository and the Streamlit Cloud dashboard updates automatically. GEE is initialized once per pipeline run (service-account → application-default → interactive auth priority chain); S1 reuses the same authenticated session as S2 without re-initializing.
+- **Remote Sensing Health dashboard page** (`app/sections/vegetation_health.py`, renamed in the sidebar from "Vegetation Health"): split into two sections — Sentinel-2 Optical Vegetation Indices (staleness explained as cloudy-period gap, with pointer to S1 fallback below) and Sentinel-1 SAR Cloudy-Season Fallback (freshness-aware status indicator: green/blue/yellow depending on SAR age; radar proxy disclaimer shown prominently).
+- **Reusable date-range controls** (`app/utils/date_filters.py`, `render_date_range_selector()` / `filter_by_date_range()`): Past 24 hours through Max selector applied to all time-series dashboard pages; reference date is the max date in the data (not the system clock) so historical datasets filter correctly.
+- **Overview map dark mode** (`app/sections/overview_map.py`): map tile switches automatically between `carto-darkmatter` and `carto-positron` based on Streamlit theme; no Mapbox token required.
+
 Note: the standalone scripts for every step above still exist and can be run individually for targeted debugging, but the recommended day-to-day workflow is `python main.py` for a full refresh (fetches fresh data) or `python main.py --skip-fetch` for an offline rebuild. Daily refresh can be automated locally with Windows Task Scheduler — see `docs/DAILY_REFRESH_WINDOWS.md`. No ML or cloud/GPU work has started.
 
 Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for full detail): phenology-aware crop coefficients/risk logic beyond Kc, calibration of Kc values against local/cultivar data, and advanced modeling (Monte Carlo, Bayesian calibration, ML-based forecasting) with cloud deployment, a real scheduler, and IndiaAI Compute as later-stage options only if a genuine deployment/GPU/scale need arises.
@@ -707,6 +759,7 @@ Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for
 
 Planned future upgrades:
 
+- Calibrate Sentinel-1 SAR backscatter (VV/VH) against field soil-moisture measurements and canopy observations at Muthukur (currently uncalibrated proxy signals only)
 - Calibrate the phenology-aware Kc stage values against local/cultivar-specific data (current values are first-pass assumptions)
 - Add irrigation-event, runoff, and deep-percolation tracking to the water balance (currently rainfed-only depletion)
 - Add phenology-aware mango risk modeling (beyond Kc heat/disease/forecast risk by growth stage)
@@ -789,3 +842,5 @@ cached data or a "file not found" message — all other pages work normally.
 ## 19. Disclaimer
 
 This project is a research and prototype system. The risk scores are not final agronomic recommendations. Field validation, expert calibration, and local farmer observations are required before operational use.
+
+Sentinel-1 SAR backscatter values (VV/VH) displayed on the Remote Sensing Health page are radar proxy signals that correlate loosely with surface roughness, soil moisture, and canopy volume under specific conditions. They have not been calibrated against field measurements at Muthukur or for mango orchards. They are intended as directional indicators during cloudy periods when Sentinel-2 optical data is unavailable — not as replacements for NDVI or direct soil-moisture sensors. No yield prediction, field-validated soil moisture, or AI/ML-derived inference is claimed.
