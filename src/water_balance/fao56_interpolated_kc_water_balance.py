@@ -116,6 +116,7 @@ import pandas as pd
 from src.utils.config import get_config
 from src.utils.logger import get_logger
 from src.utils.validation import MissingColumnsError, validate_fao56_input, validate_phenology_output
+from src.irrigation.load_irrigation_events import load_irrigation_events
 
 # Re-use ET0 and soil functions directly from the base FAO-56 script to avoid
 # duplicating the physics — both scripts remain mathematically identical in
@@ -209,6 +210,7 @@ def compute_interpolated_kc_water_balance(
     method_labels: list[str],
     root_depth_m: float,
     depletion_fraction_p: float,
+    irrigation_mm_arr: "np.ndarray | None" = None,
 ) -> pd.DataFrame:
     """
     Compute ETc and the daily root-zone soil-water balance using the smoothly
@@ -216,6 +218,12 @@ def compute_interpolated_kc_water_balance(
 
     The depletion / Ks equations are identical to fao56_phenology_water_balance.py
     (FAO-56 eq 82-85).  Only the Kc driving ETc changes.
+
+    Parameters
+    ----------
+    irrigation_mm_arr : np.ndarray | None
+        Optional per-day irrigation amounts (mm), aligned to joined_df rows.
+        If None or omitted, the balance is rainfed-only (irrigation = 0).
 
     Returns a DataFrame with all output columns specified in the module docstring.
     """
@@ -231,13 +239,15 @@ def compute_interpolated_kc_water_balance(
     raw_mm = depletion_fraction_p * taw_mm                   # eq 83
 
     rainfall = joined_df["rainfall_mm"].fillna(0.0).to_numpy()
+    irrigation = irrigation_mm_arr if irrigation_mm_arr is not None else np.zeros(len(joined_df))
 
     # Running depletion balance (eq 85 simplified): start at field capacity
     n = len(joined_df)
     depletion = np.zeros(n)
     prev_dep = 0.0
     for i in range(n):
-        dep = prev_dep - rainfall[i] + etc_values[i]
+        water_input_i = rainfall[i] + irrigation[i]  # FAO-56 eq 85
+        dep = prev_dep - water_input_i + etc_values[i]
         dep = max(0.0, min(dep, taw_mm))
         depletion[i] = dep
         prev_dep = dep
@@ -257,6 +267,9 @@ def compute_interpolated_kc_water_balance(
             "interpolated_kc": np.round(interpolated_kc, 5),
             "et0_mm_day": np.round(et0.to_numpy(), 4),
             "etc_mm_day": np.round(etc_values, 4),
+            "rainfall_mm": rainfall,
+            "irrigation_mm": irrigation,
+            "water_input_mm": rainfall + irrigation,
             "root_zone_depletion_mm": np.round(depletion, 3),
             "taw_mm": taw_mm,
             "raw_mm": raw_mm,
@@ -319,6 +332,13 @@ def build_fao56_interpolated_kc_water_balance() -> bool:
     log.info("Loaded %d feature-table rows from %s", len(feature_df), feature_table_path)
     log.info("Loaded %d phenology rows from %s", len(phenology_df), phenology_path)
 
+    # ── Load irrigation events (gracefully absent = rainfed-only balance) ──
+    try:
+        irr_path = config.path("irrigation_events_csv")
+        irr_df = load_irrigation_events(irr_path)
+    except (KeyError, AttributeError):
+        irr_df = pd.DataFrame()
+
     # --- inner join on date ------------------------------------------------
     joined_df = feature_df.merge(
         phenology_df[["date", "mango_stage"]],
@@ -340,6 +360,25 @@ def build_fao56_interpolated_kc_water_balance() -> bool:
         "Joined table: %d rows (inner join on date, %d feature + %d phenology rows).",
         len(joined_df), len(feature_df), len(phenology_df),
     )
+
+    # Join irrigation events onto the joined table
+    if not irr_df.empty:
+        joined_df = joined_df.merge(irr_df[["date", "irrigation_mm"]], on="date", how="left")
+        joined_df["irrigation_mm"] = joined_df["irrigation_mm"].fillna(0.0)
+    else:
+        joined_df["irrigation_mm"] = 0.0
+
+    irrigation_arr = joined_df["irrigation_mm"].to_numpy()
+    irr_days = int((irrigation_arr > 0).sum())
+    irr_total = float(irrigation_arr.sum())
+
+    if irr_days > 0:
+        log.info(
+            "Irrigation events loaded: %d day(s), %.1f mm total applied.",
+            irr_days, irr_total,
+        )
+    else:
+        log.info("No irrigation events found — computing rainfed-only water balance.")
 
     # --- FAO-56 settings from config ---------------------------------------
     fao56_cfg = config._raw.get("fao56", {})
@@ -387,6 +426,7 @@ def build_fao56_interpolated_kc_water_balance() -> bool:
         method_labels=method_labels,
         root_depth_m=root_depth_m,
         depletion_fraction_p=depletion_fraction_p,
+        irrigation_mm_arr=irrigation_arr,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -433,6 +473,10 @@ def build_fao56_interpolated_kc_water_balance() -> bool:
     print(f"    Mean ET0 (mm/day):          {result['et0_mm_day'].mean():.2f}")
     print(f"    Mean ETc (mm/day):          {result['etc_mm_day'].mean():.2f}")
     print(f"    Water stress breakdown:     {stress_counts}")
+    if irr_days > 0:
+        print(f"    Irrigation events:          {irr_days} day(s), {irr_total:.1f} mm total")
+    else:
+        print("    Irrigation events:          None (rainfed-only balance)")
     print()
     print("  Output file:")
     print(f"    {output_path}")

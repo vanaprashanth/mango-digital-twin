@@ -53,6 +53,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.utils.config import get_config  # noqa: E402
 from src.utils.logger import get_logger  # noqa: E402
+from src.irrigation.load_irrigation_events import load_irrigation_events  # noqa: E402
 
 log = get_logger(__name__)
 config = get_config()
@@ -276,13 +277,24 @@ def _build_limitations(
     today: date,
     forecast_available: bool,
     forecast_resolution: str,
+    irrigation_events_loaded: bool = False,
 ) -> str:
+    if irrigation_events_loaded:
+        irrigation_note = (
+            "Irrigation events are recorded manually in data/manual/muthukur_irrigation_events.csv "
+            "and applied in the FAO-56 water balance. Unrecorded irrigation is not tracked."
+        )
+    else:
+        irrigation_note = (
+            "No irrigation-event records found; FAO-56 water balance assumes rainfed-only conditions. "
+            "Record actual irrigation in data/manual/muthukur_irrigation_events.csv to improve accuracy."
+        )
     parts = [
         "FAO-56 status is from the interpolated-Kc water balance "
         "(smoothed Kc transitions between mango growth stages). "
         "Kc values are not field-calibrated for this specific orchard or cultivar.",
         "No soil-moisture sensor validation — depletion estimates carry model uncertainty.",
-        "No irrigation-event records; all FAO-56 models are rainfed-only depletion balances.",
+        irrigation_note,
     ]
     staleness = (today - fao56_date).days
     if staleness > 1:
@@ -370,6 +382,32 @@ def run_forecast_aware_advisory() -> Path:
             "forecast_available": False,
         }
 
+    # ── Irrigation events context ─────────────────────────────────────────
+    try:
+        irr_path = config.path("irrigation_events_csv")
+        irr_df = load_irrigation_events(irr_path)
+    except (KeyError, AttributeError):
+        irr_df = pd.DataFrame()
+
+    last_irrigation_date: str | None = None
+    days_since_last_irrigation: int | None = None
+
+    if not irr_df.empty:
+        # Only consider events on or before today
+        past_irr = irr_df[irr_df["date"].dt.date <= today]
+        if not past_irr.empty:
+            last_irr_date = past_irr["date"].max().date()
+            last_irrigation_date = str(last_irr_date)
+            days_since_last_irrigation = (today - last_irr_date).days
+            log.info(
+                "Last recorded irrigation: %s (%d day(s) ago)",
+                last_irrigation_date, days_since_last_irrigation,
+            )
+
+    irrigation_events_loaded = (
+        not irr_df.empty and last_irrigation_date is not None
+    )
+
     # ── Decision ──────────────────────────────────────────────────────────
     advisory_action, advisory_priority, advisory_reason = _decide_advisory(
         stress_level=water_stress_level,
@@ -379,11 +417,19 @@ def run_forecast_aware_advisory() -> Path:
         forecast_available=fc_summary["forecast_available"],
     )
 
+    # Append irrigation note to reason if a very recent event is recorded
+    if days_since_last_irrigation is not None and days_since_last_irrigation <= 2:
+        advisory_reason = (
+            f"{advisory_reason} Note: irrigation was recorded {days_since_last_irrigation} "
+            "day(s) ago — FAO-56 balance already reflects this water input."
+        )
+
     advisory_limitations = _build_limitations(
         fao56_date=current_date,
         today=today,
         forecast_available=fc_summary["forecast_available"],
         forecast_resolution=fc_summary["forecast_resolution"],
+        irrigation_events_loaded=irrigation_events_loaded,
     )
 
     # ── Assemble output ───────────────────────────────────────────────────
@@ -397,6 +443,8 @@ def run_forecast_aware_advisory() -> Path:
         "etc_mm_day": round(etc_mm_day, 4),
         "root_zone_depletion_mm": round(root_zone_depletion_mm, 4),
         "ks": round(ks, 4),
+        "last_irrigation_date": last_irrigation_date,
+        "days_since_last_irrigation": days_since_last_irrigation,
         "forecast_resolution": fc_summary["forecast_resolution"],
         "rain_next_6h_mm": fc_summary["rain_next_6h_mm"],
         "rain_next_12h_mm": fc_summary["rain_next_12h_mm"],
@@ -422,6 +470,10 @@ def run_forecast_aware_advisory() -> Path:
     print(f"FAO-56 status date:    {current_date}")
     print(f"Mango stage:           {mango_stage}")
     print(f"Water stress level:    {water_stress_level}  (Ks={ks:.3f})")
+    if last_irrigation_date:
+        print(f"Last irrigation:       {last_irrigation_date} ({days_since_last_irrigation} day(s) ago)")
+    else:
+        print("Last irrigation:       No events recorded")
     print(f"ETc (mm/day):          {etc_mm_day:.3f}")
     print(f"Root zone depletion:   {root_zone_depletion_mm:.1f} mm")
     print(f"Forecast resolution:   {fc_summary['forecast_resolution']}")

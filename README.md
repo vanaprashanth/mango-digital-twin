@@ -528,8 +528,8 @@ duplicated in the pipeline runner. The standalone command
 (`python src/water_balance/fao56_phenology_water_balance.py`) still works
 exactly as before, for targeted debugging. It remains a prototype — Kc
 values are assumed, not cultivar-specific, not field-calibrated, and
-irrigation events are not yet included. See `ROADMAP.md` and
-`MILESTONE_SUMMARY.md` for limitations and next steps.
+irrigation events are tracked via a manual CSV (see §14 Irrigation Event Tracking below).
+See `ROADMAP.md` and `MILESTONE_SUMMARY.md` for additional limitations and next steps.
 
 ---
 
@@ -681,7 +681,43 @@ See `ROADMAP.md` for the full multi-phase development plan (local PC → cloud �
 
 ---
 
-## 14. What-if Simulator
+## 14. Irrigation Event Tracking
+
+Actual irrigation applications can be recorded in a manually maintained CSV file:
+
+```
+data/manual/muthukur_irrigation_events.csv
+```
+
+**Column format:**
+
+| Column | Type | Required | Description |
+|---|---|---|---|
+| `date` | YYYY-MM-DD | Yes | Date irrigation was applied |
+| `irrigation_mm` | float > 0 | Yes | Water applied in mm |
+| `method` | text | No | How applied (e.g. drip, flood, sprinkler) |
+| `source` | text | No | Who recorded it (e.g. farmer, observer) |
+| `notes` | text | No | Free-text notes |
+
+**How it works:** `src/irrigation/load_irrigation_events.py` reads and validates this file. Each of the three FAO-56 water balance scripts (`fao56_water_balance.py`, `fao56_phenology_water_balance.py`, `fao56_interpolated_kc_water_balance.py`) loads the irrigation CSV and joins it to their input data by date. On days with recorded irrigation, the depletion balance becomes:
+
+```
+Dr,i = Dr,i-1 − (rainfall_i + irrigation_i) + ETc,i     (FAO-56 eq 85, extended)
+```
+
+When the CSV is absent or empty, all three scripts fall back to rainfed-only depletion — behaviour is identical to before this feature was added.
+
+**Output columns added:** `irrigation_mm` and `water_input_mm` (= `rainfall_mm` + `irrigation_mm`) appear in all three FAO-56 output CSVs. Existing columns are unchanged.
+
+**Advisory integration:** `src/advisory/forecast_aware_irrigation.py` loads the irrigation CSV and adds `last_irrigation_date` and `days_since_last_irrigation` to the advisory output record. If irrigation was recorded within 2 days, the advisory reason note mentions this so the recommendation is contextualised.
+
+**Dashboard:** The **Irrigation Events** page (sidebar) shows total events, total mm applied, latest event date, and a chart and table of all recorded events. The **Water Balance** page shows a rainfall + irrigation + total-water-input chart when events are present.
+
+**To update events:** Edit `data/manual/muthukur_irrigation_events.csv` directly (not via the UI), then re-run `python main.py --skip-fetch` to regenerate the FAO-56 outputs and advisory. Do not stage the `data/raw` or `data/processed` directories when committing new irrigation records.
+
+---
+
+## 15. What-if Simulator
 
 The what-if simulator allows the user to test changes in:
 
@@ -705,7 +741,7 @@ This simulates wet and humid disease-friendly conditions.
 
 ---
 
-## 15. Current Project Status
+## 16. Current Project Status
 
 Completed:
 
@@ -755,13 +791,14 @@ Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for
 
 ---
 
-## 16. Future Work
+## 17. Future Work
 
 Planned future upgrades:
 
 - Calibrate Sentinel-1 SAR backscatter (VV/VH) against field soil-moisture measurements and canopy observations at Muthukur (currently uncalibrated proxy signals only)
 - Calibrate the phenology-aware Kc stage values against local/cultivar-specific data (current values are first-pass assumptions)
-- Add irrigation-event, runoff, and deep-percolation tracking to the water balance (currently rainfed-only depletion)
+- Add runoff and deep-percolation tracking to the water balance (irrigation events are now tracked via manual CSV; runoff/percolation remain unmodelled)
+- Validate recorded irrigation events against field meter readings or SCADA data
 - Add phenology-aware mango risk modeling (beyond Kc heat/disease/forecast risk by growth stage)
 - Add a real scheduler for unattended/recurring runs (the pipeline itself is now unified and freshness-aware, but nothing schedules it yet — every run is still manually triggered)
 - Add Ensemble Kalman Filter state estimation
@@ -775,7 +812,7 @@ See `MILESTONE_SUMMARY.md` for a beginner-friendly snapshot of what is and isn't
 
 ---
 
-## 17. Research Direction
+## 18. Research Direction
 
 This project supports the idea of a sensor-free digital twin for mango orchard risk intelligence.
 
@@ -793,7 +830,7 @@ A sensor-free, phenology-aware, Bayesian digital twin for mango orchard risk for
 
 ---
 
-## 18. Streamlit Community Cloud Deployment
+## 19. Streamlit Community Cloud Deployment
 
 ### Entry point
 
@@ -839,7 +876,7 @@ cached data or a "file not found" message — all other pages work normally.
 
 ---
 
-## 19. Disclaimer
+## 20. Disclaimer
 
 This project is a research and prototype system. The risk scores are not final agronomic recommendations. Field validation, expert calibration, and local farmer observations are required before operational use.
 

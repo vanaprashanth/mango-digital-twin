@@ -100,6 +100,7 @@ from src.utils.validation import (
     validate_fao56_phenology_output,
     validate_phenology_output,
 )
+from src.irrigation.load_irrigation_events import load_irrigation_events
 
 # Re-use the existing FAO-56 script's ET0 math and soil pedotransfer function
 # directly, instead of duplicating it here. This guarantees both the
@@ -175,6 +176,7 @@ def compute_phenology_water_balance(
     kc: pd.Series,
     root_depth_m: float,
     depletion_fraction_p: float,
+    irrigation_mm_arr: "np.ndarray | None" = None,
 ) -> pd.DataFrame:
     """
     Compute ETc and the daily root-zone soil-water balance using a
@@ -185,6 +187,12 @@ def compute_phenology_water_balance(
     compute_water_balance() function as closely as possible — same TAW/RAW/
     depletion/Ks equations (FAO-56 eq 82-85) — the only difference is that
     `kc` is a per-row Series here instead of a single float.
+
+    Parameters
+    ----------
+    irrigation_mm_arr : np.ndarray | None
+        Optional per-day irrigation amounts (mm), aligned to joined_df rows.
+        If None or omitted, the balance is rainfed-only (irrigation = 0).
     """
 
     etc = et0 * kc  # ETc = ET0 * Kc(stage), per day (FAO-56 eq for ETc)
@@ -200,16 +208,16 @@ def compute_phenology_water_balance(
 
     rainfall = joined_df["rainfall_mm"].fillna(0).to_numpy()
     etc_values = etc.to_numpy()
+    irrigation = irrigation_mm_arr if irrigation_mm_arr is not None else np.zeros(len(joined_df))
 
     # Same day-by-day running depletion balance as the existing script:
-    # depletion increases with ETc, decreases with rainfall, and is clamped
-    # to [0, TAW] (no irrigation events tracked — see the existing script's
-    # docstring for the full list of simplifications, which all still apply
-    # here unchanged).
+    # depletion increases with ETc, decreases with water input (rainfall +
+    # irrigation), and is clamped to [0, TAW].
     depletion = np.zeros(len(joined_df))
     previous_depletion = 0.0  # assume the soil starts at field capacity
     for i in range(len(joined_df)):
-        current_depletion = previous_depletion - rainfall[i] + etc_values[i]
+        water_input_i = rainfall[i] + irrigation[i]  # FAO-56 eq 85
+        current_depletion = previous_depletion - water_input_i + etc_values[i]
         current_depletion = max(0.0, min(current_depletion, taw_mm))
         depletion[i] = current_depletion
         previous_depletion = current_depletion
@@ -235,6 +243,8 @@ def compute_phenology_water_balance(
             "et0_mm_day": et0.to_numpy(),
             "etc_mm_day": etc_values,
             "rainfall_mm": rainfall,
+            "irrigation_mm": irrigation,
+            "water_input_mm": rainfall + irrigation,
             "root_zone_depletion_mm": depletion,
             "taw_mm": taw_mm,
             "raw_mm": raw_mm,
@@ -318,6 +328,31 @@ def build_fao56_phenology_water_balance() -> bool:
         len(joined_df), len(feature_df), len(phenology_df),
     )
 
+    # ── Load irrigation events (gracefully absent = rainfed-only balance) ──
+    try:
+        irr_path = config.path("irrigation_events_csv")
+        irr_df = load_irrigation_events(irr_path)
+    except (KeyError, AttributeError):
+        irr_df = pd.DataFrame()
+
+    if not irr_df.empty:
+        joined_df = joined_df.merge(irr_df[["date", "irrigation_mm"]], on="date", how="left")
+        joined_df["irrigation_mm"] = joined_df["irrigation_mm"].fillna(0.0)
+    else:
+        joined_df["irrigation_mm"] = 0.0
+
+    irrigation_arr = joined_df["irrigation_mm"].to_numpy()
+    irr_days = int((irrigation_arr > 0).sum())
+    irr_total = float(irrigation_arr.sum())
+
+    if irr_days > 0:
+        log.info(
+            "Irrigation events loaded: %d day(s), %.1f mm total applied.",
+            irr_days, irr_total,
+        )
+    else:
+        log.info("No irrigation events found — computing rainfed-only water balance.")
+
     fao56_settings = config._raw.get("fao56", {})
     elevation_m = fao56_settings.get("elevation_m", 150)
     root_depth_m = fao56_settings.get("root_depth_m", 1.2)
@@ -348,6 +383,7 @@ def build_fao56_phenology_water_balance() -> bool:
         kc=kc,
         root_depth_m=root_depth_m,
         depletion_fraction_p=depletion_fraction_p,
+        irrigation_mm_arr=irrigation_arr,
     )
 
     # Validate our own output before writing it, so a typo in a column name
@@ -386,6 +422,10 @@ def build_fao56_phenology_water_balance() -> bool:
     print(f"Mango stage day counts:        {stage_counts}")
     print(f"Kc used per stage:             {kc_by_stage}")
     print(f"Water stress level breakdown:  {stress_counts}")
+    if irr_days > 0:
+        print(f"Irrigation events:             {irr_days} day(s), {irr_total:.1f} mm total")
+    else:
+        print("Irrigation events:             None (rainfed-only balance)")
     print(f"Saved phenology-aware FAO-56 water balance table to: {output_path}")
     print()
     print("Reminder: the Kc-per-stage values above are first-pass assumptions,")

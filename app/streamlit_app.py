@@ -11,6 +11,7 @@ from plotly.subplots import make_subplots
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.sections.fao56_model_comparison import render_fao56_model_comparison_page
+from app.sections.irrigation_events import render_irrigation_events_page
 from app.sections.water_balance import render_water_balance_page
 from app.sections.phenology_water_balance import render_phenology_water_balance_page
 from app.sections.fao56_sensitivity_analysis import render_fao56_sensitivity_analysis_page
@@ -61,6 +62,7 @@ FAO56_SENSITIVITY_SUMMARY_MD_PATH = config.path("fao56_sensitivity_summary_md")
 ET0_COMPARISON_CSV_PATH = config.path("et0_comparison_csv")
 ET0_COMPARISON_SUMMARY_MD_PATH = config.path("et0_comparison_summary_md")
 PIPELINE_METADATA_PATH = config.path("pipeline_run_metadata_json")
+IRRIGATION_EVENTS_PATH = config.path("irrigation_events_csv")
 
 
 st.set_page_config(
@@ -557,6 +559,19 @@ if FORECAST_AWARE_ADVISORY_PATH.exists():
         FORECAST_AWARE_ADVISORY_PATH, "Irrigation advisory"
     )
 
+# Irrigation events (manual CSV — gracefully absent)
+irrigation_events_df = None
+
+try:
+    from src.irrigation.load_irrigation_events import load_irrigation_events as _load_irr
+    if IRRIGATION_EVENTS_PATH.exists():
+        _irr = _load_irr(IRRIGATION_EVENTS_PATH)
+        irrigation_events_df = _irr if not _irr.empty else None
+    else:
+        irrigation_events_df = None
+except Exception:
+    irrigation_events_df = None
+
 fao56_sensitivity_df = None
 
 if FAO56_SENSITIVITY_CSV_PATH.exists():
@@ -614,6 +629,7 @@ page = st.sidebar.radio(
         "FAO-56 Sensitivity Analysis",
         "ET0 Validation",
         "Irrigation Advisory",
+        "Irrigation Events",
         "What-if Simulator",
         "Raw Data",
     ],
@@ -635,6 +651,7 @@ render_status_badge("FAO-56 model comparison (processed)", FAO56_MODEL_COMPARISO
 render_status_badge("FAO-56 sensitivity analysis (processed)", FAO56_SENSITIVITY_CSV_PATH)
 render_status_badge("Irrigation advisory (processed)", FORECAST_AWARE_ADVISORY_PATH)
 render_status_badge("ET0 comparison (processed)", ET0_COMPARISON_CSV_PATH)
+render_status_badge("Irrigation events (manual)", IRRIGATION_EVENTS_PATH)
 
 st.sidebar.divider()
 render_data_freshness_section()
@@ -751,6 +768,14 @@ elif page == "ET0 Validation":
 
 elif page == "Irrigation Advisory":
     render_irrigation_advisory_page(irrigation_advisory_df)
+
+
+# =======================================================================
+# PAGE: Irrigation Events
+# =======================================================================
+
+elif page == "Irrigation Events":
+    render_irrigation_events_page(irrigation_events_df)
 
 
 # =======================================================================

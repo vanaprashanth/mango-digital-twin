@@ -129,6 +129,7 @@ paths:
   et0_comparison_csv: "data/processed/muthukur_et0_openmeteo_fao56_comparison.csv"
   et0_comparison_summary_md: "data/processed/muthukur_et0_openmeteo_fao56_summary.md"
   pipeline_run_metadata_json: "data/processed/pipeline_run_metadata.json"
+  irrigation_events_csv: "data/manual/muthukur_irrigation_events.csv"
 
 risk_thresholds:
   classification:

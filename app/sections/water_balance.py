@@ -25,11 +25,26 @@ def render_water_balance_page(fao56_water_balance_df: pd.DataFrame | None) -> No
     st.title("Water Balance (FAO-56)")
     show_freshness_indicator(fao56_water_balance_df, label="FAO-56 water balance", staleness_warning_days=7)
 
-    st.warning(
-        "This FAO-56 page is a simplified rainfed prototype. It does not yet include actual "
-        "irrigation events, runoff, deep percolation, phenology-aware crop coefficients, or "
-        "field validation."
+    _has_irrigation_cols = (
+        fao56_water_balance_df is not None
+        and "irrigation_mm" in fao56_water_balance_df.columns
+        and fao56_water_balance_df["irrigation_mm"].sum() > 0
     )
+
+    if _has_irrigation_cols:
+        st.info(
+            "ℹ️ Recorded irrigation events are included in this water balance. "
+            "Water input = rainfall + recorded irrigation (FAO-56 eq 85). "
+            "To add or edit events, update `data/manual/muthukur_irrigation_events.csv` "
+            "and re-run `python main.py --skip-fetch`."
+        )
+    else:
+        st.warning(
+            "This FAO-56 water balance uses a constant Kc and includes irrigation events "
+            "if recorded in `data/manual/muthukur_irrigation_events.csv`. "
+            "Currently no irrigation events are recorded — depletion reflects rainfed-only conditions. "
+            "It does not include runoff, deep percolation, or phenology-aware crop coefficients."
+        )
 
     if fao56_water_balance_df is None or fao56_water_balance_df.empty:
         st.warning("FAO-56 water balance file not found or could not be loaded.")
@@ -112,6 +127,46 @@ def render_water_balance_page(fao56_water_balance_df: pd.DataFrame | None) -> No
         )
         st.plotly_chart(et_fig, use_container_width=True)
 
+        # Show irrigation panel if events are recorded in this output CSV
+        _has_irr = (
+            "irrigation_mm" in wb_plot_df.columns
+            and wb_plot_df["irrigation_mm"].sum() > 0
+        )
+        if _has_irr:
+            st.caption(
+                "Irrigation events are included in this balance. "
+                "Water input = rainfall + recorded irrigation."
+            )
+            irr_water_fig = make_subplots(specs=[[{"secondary_y": True}]])
+            irr_water_fig.add_trace(
+                go.Bar(
+                    x=wb_plot_df["date"], y=wb_plot_df["rainfall_mm"],
+                    name="Rainfall (mm)",
+                ),
+                secondary_y=False,
+            )
+            irr_water_fig.add_trace(
+                go.Bar(
+                    x=wb_plot_df["date"], y=wb_plot_df["irrigation_mm"],
+                    name="Irrigation (mm)",
+                    marker_color="steelblue",
+                ),
+                secondary_y=False,
+            )
+            if "water_input_mm" in wb_plot_df.columns:
+                irr_water_fig.add_trace(
+                    go.Scatter(
+                        x=wb_plot_df["date"], y=wb_plot_df["water_input_mm"],
+                        name="Total water input (mm)", mode="lines",
+                    ),
+                    secondary_y=True,
+                )
+            irr_water_fig.update_layout(title="Rainfall, Irrigation, and Total Water Input")
+            irr_water_fig.update_xaxes(title_text="Date")
+            irr_water_fig.update_yaxes(title_text="Rainfall / Irrigation (mm)", secondary_y=False)
+            irr_water_fig.update_yaxes(title_text="Total water input (mm)", secondary_y=True)
+            st.plotly_chart(irr_water_fig, use_container_width=True)
+
         st.caption(
             "Rainfall and ETc plotted together (different scales), since rainfall events and "
             "crop water use both drive the daily depletion balance."
@@ -183,6 +238,7 @@ def render_water_balance_page(fao56_water_balance_df: pd.DataFrame | None) -> No
         st.write("- **Ks** is the water-stress coefficient — 1.0 means no stress, and lower values mean stronger water stress.")
         st.write("- **TAW** is total available water — the maximum water the root zone can hold and still release to the crop.")
         st.write("- **RAW** is readily available water — the portion of TAW that can be used before water stress (Ks < 1) begins.")
+        st.write("- **Water input** = rainfall + recorded irrigation. On days with irrigation events, depletion decreases faster than rainfall alone would produce.")
 
         st.divider()
 

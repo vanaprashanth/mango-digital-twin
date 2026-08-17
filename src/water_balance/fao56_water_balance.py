@@ -124,6 +124,7 @@ import pandas as pd
 from src.utils.config import get_config
 from src.utils.logger import get_logger
 from src.utils.validation import MissingColumnsError, validate_fao56_input
+from src.irrigation.load_irrigation_events import load_irrigation_events
 
 log = get_logger(__name__)
 
@@ -303,8 +304,16 @@ def compute_water_balance(
     kc_constant: float,
     root_depth_m: float,
     depletion_fraction_p: float,
+    irrigation_mm_arr: "np.ndarray | None" = None,
 ) -> pd.DataFrame:
-    """Compute ETc and the daily root-zone soil-water balance (eq 82-85)."""
+    """Compute ETc and the daily root-zone soil-water balance (eq 82-85).
+
+    Parameters
+    ----------
+    irrigation_mm_arr : np.ndarray | None
+        Optional per-day irrigation amounts (mm), aligned to df rows.
+        If None or omitted, the balance is rainfed-only (irrigation = 0).
+    """
 
     etc = et0 * kc_constant
 
@@ -319,11 +328,13 @@ def compute_water_balance(
 
     rainfall = df["rainfall_mm"].fillna(0).to_numpy()
     etc_values = etc.to_numpy()
+    irrigation = irrigation_mm_arr if irrigation_mm_arr is not None else np.zeros(len(df))
 
     depletion = np.zeros(len(df))
     previous_depletion = 0.0  # assume the soil starts at field capacity
     for i in range(len(df)):
-        current_depletion = previous_depletion - rainfall[i] + etc_values[i]
+        water_input_i = rainfall[i] + irrigation[i]  # FAO-56 eq 85: rainfall + irrigation
+        current_depletion = previous_depletion - water_input_i + etc_values[i]
         current_depletion = max(0.0, min(current_depletion, taw_mm))
         depletion[i] = current_depletion
         previous_depletion = current_depletion
@@ -341,6 +352,8 @@ def compute_water_balance(
             "et0_mm": et0.to_numpy(),
             "etc_mm": etc_values,
             "rainfall_mm": rainfall,
+            "irrigation_mm": irrigation,
+            "water_input_mm": rainfall + irrigation,
             "root_zone_depletion_mm": depletion,
             "taw_mm": taw_mm,
             "raw_mm": raw_mm,
@@ -373,6 +386,31 @@ def build_fao56_water_balance() -> bool:
 
     log.info("Loaded %d combined feature table rows from %s", len(df), input_path)
 
+    # ── Load irrigation events (gracefully absent = rainfed-only balance) ──
+    try:
+        irr_path = config.path("irrigation_events_csv")
+        irr_df = load_irrigation_events(irr_path)
+    except (KeyError, AttributeError):
+        irr_df = pd.DataFrame()
+
+    if not irr_df.empty:
+        df = df.merge(irr_df[["date", "irrigation_mm"]], on="date", how="left")
+        df["irrigation_mm"] = df["irrigation_mm"].fillna(0.0)
+    else:
+        df["irrigation_mm"] = 0.0
+
+    irrigation_arr = df["irrigation_mm"].to_numpy()
+    irr_days = int((irrigation_arr > 0).sum())
+    irr_total = float(irrigation_arr.sum())
+
+    if irr_days > 0:
+        log.info(
+            "Irrigation events loaded: %d day(s), %.1f mm total applied.",
+            irr_days, irr_total,
+        )
+    else:
+        log.info("No irrigation events found — computing rainfed-only water balance.")
+
     fao56_settings = config._raw.get("fao56", {})
     elevation_m = fao56_settings.get("elevation_m", 150)
     root_depth_m = fao56_settings.get("root_depth_m", 1.2)
@@ -388,6 +426,7 @@ def build_fao56_water_balance() -> bool:
         kc_constant=kc_constant,
         root_depth_m=root_depth_m,
         depletion_fraction_p=depletion_fraction_p,
+        irrigation_mm_arr=irrigation_arr,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -414,6 +453,10 @@ def build_fao56_water_balance() -> bool:
     print(f"TAW (total available water): {result['taw_mm'].iloc[0]:.1f} mm")
     print(f"RAW (readily available):     {result['raw_mm'].iloc[0]:.1f} mm")
     print(f"Water stress level breakdown: {stress_counts}")
+    if irr_days > 0:
+        print(f"Irrigation events:           {irr_days} day(s), {irr_total:.1f} mm total")
+    else:
+        print("Irrigation events:           None (rainfed-only balance)")
     print(f"Saved FAO-56 water balance table to: {output_path}")
     print()
     print("This is still a standalone file — not yet wired into main.py")
