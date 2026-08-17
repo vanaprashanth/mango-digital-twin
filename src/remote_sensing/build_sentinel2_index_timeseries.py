@@ -67,19 +67,31 @@ INDEX_BAND_PAIRS = {
 REQUIRED_ROW_FIELDS = ["date", "image_id", "cloud_percentage"]
 
 
-def build_index_timeseries() -> bool:
+def build_index_timeseries(assume_ee_initialized: bool = False) -> bool:
     """
     Query every usable Sentinel-2 scene for the configured area/date range,
     compute mean NDVI/NDWI/NDMI/NDRE per scene, and write one CSV row per
     scene (no date/month aggregation). Returns True on success, False if
     Earth Engine isn't ready or no scenes are found.
+
+    assume_ee_initialized
+        When True, skip the check_earth_engine_setup() call and go straight
+        to the Earth Engine API calls.  Use this when the caller (e.g.
+        run_pipeline.py) has already called try_init_earth_engine() and
+        verified that Earth Engine is ready — re-running check_earth_engine_setup()
+        would call ee.Initialize() a second time with the default credential
+        chain, which fails in CI/service-account environments where the first
+        initialization used ServiceAccountCredentials.  Defaults to False so
+        that standalone script invocations (python build_sentinel2_index_timeseries.py)
+        still go through the interactive setup check.
     """
 
-    if not check_earth_engine_setup():
-        print()
-        print("Earth Engine isn't ready yet — fix the issue above, then run")
-        print("this script again.")
-        return False
+    if not assume_ee_initialized:
+        if not check_earth_engine_setup():
+            print()
+            print("Earth Engine isn't ready yet — fix the issue above, then run")
+            print("this script again.")
+            return False
 
     import ee
     import pandas as pd

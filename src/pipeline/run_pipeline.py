@@ -503,7 +503,13 @@ def main():
             print()
             sentinel2_start = time.time()
             try:
-                s2_ok = sentinel2_timeseries_script.build_index_timeseries()
+                # Pass assume_ee_initialized=True so build_index_timeseries
+                # does not call check_earth_engine_setup() (which would call
+                # ee.Initialize() a second time with the default credential
+                # chain and fail in CI after service-account initialization).
+                s2_ok = sentinel2_timeseries_script.build_index_timeseries(
+                    assume_ee_initialized=True
+                )
             except Exception as exc:
                 s2_ok = False
                 log.error("Sentinel-2 timeseries build raised: %s", exc)

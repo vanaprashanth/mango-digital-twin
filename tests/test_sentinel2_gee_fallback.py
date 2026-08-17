@@ -187,7 +187,7 @@ class TestRefreshSentinel2Flag:
 
         timeseries_called = []
 
-        def mock_build():
+        def mock_build(**kwargs):
             timeseries_called.append(True)
             return True
 
@@ -199,6 +199,81 @@ class TestRefreshSentinel2Flag:
                 self._run_pipeline_with_args(["--skip-soil-fetch", "--refresh-sentinel2"])
 
         assert timeseries_called, "build_index_timeseries() was not called when GEE was available"
+
+    def test_refresh_sentinel2_passes_assume_ee_initialized_true(self, monkeypatch):
+        """
+        After successful try_init_earth_engine(), run_pipeline must call
+        build_index_timeseries(assume_ee_initialized=True) so that the old
+        interactive check_earth_engine_setup() path is NOT triggered.
+
+        This is the CI/service-account regression test: without
+        assume_ee_initialized=True, build_index_timeseries() would call
+        check_earth_engine_setup() which calls ee.Initialize() again with
+        the default credential chain, failing in CI after service-account init.
+        """
+        monkeypatch.delenv("GEE_SERVICE_ACCOUNT_KEY", raising=False)
+
+        call_kwargs = {}
+
+        def mock_build(**kwargs):
+            call_kwargs.update(kwargs)
+            return True
+
+        from src.pipeline import run_pipeline
+        with patch.object(run_pipeline, "try_init_earth_engine",
+                          return_value=(True, "initialized with service account (ci@proj.iam.gserviceaccount.com)")):
+            with patch.object(run_pipeline.sentinel2_timeseries_script,
+                              "build_index_timeseries", side_effect=mock_build):
+                self._run_pipeline_with_args(["--skip-soil-fetch", "--refresh-sentinel2"])
+
+        assert call_kwargs.get("assume_ee_initialized") is True, (
+            "run_pipeline must pass assume_ee_initialized=True to build_index_timeseries() "
+            "so check_earth_engine_setup() is not called again after service-account init"
+        )
+
+    def test_build_index_timeseries_skips_gee_setup_when_assume_initialized(self):
+        """
+        build_index_timeseries(assume_ee_initialized=True) must NOT call
+        check_earth_engine_setup(). Without this, CI fails because
+        check_earth_engine_setup() calls ee.Initialize() with default
+        credentials after service-account init has already succeeded.
+        """
+        from src.remote_sensing import build_sentinel2_index_timeseries as bst
+
+        setup_called = []
+
+        def mock_check_setup():
+            setup_called.append(True)
+            return True  # would pass, but should not be called
+
+        # Make the actual GEE API calls fail so build exits early with False
+        # (we only care that check_earth_engine_setup was NOT called)
+        ee_mock = MagicMock()
+        ee_mock.ImageCollection.return_value.filterBounds.return_value             .filterDate.return_value.filter.return_value             .sort.return_value.size.return_value.getInfo.side_effect = RuntimeError("no GEE")
+
+        with patch.object(bst, "check_earth_engine_setup", side_effect=mock_check_setup):
+            with patch.dict("sys.modules", {"ee": ee_mock}):
+                # assume_ee_initialized=True → check_earth_engine_setup must NOT be called
+                bst.build_index_timeseries(assume_ee_initialized=True)
+
+        assert not setup_called, (
+            "check_earth_engine_setup() was called even though assume_ee_initialized=True — "
+            "this causes CI failures when GEE was already initialized with a service account"
+        )
+
+    def test_build_index_timeseries_calls_gee_setup_when_not_assumed(self):
+        """
+        Default behavior (assume_ee_initialized=False): check_earth_engine_setup()
+        IS called, and if it returns False the function exits early.
+        This preserves the interactive local-dev experience.
+        """
+        from src.remote_sensing import build_sentinel2_index_timeseries as bst
+
+        with patch.object(bst, "check_earth_engine_setup", return_value=False) as mock_setup:
+            result = bst.build_index_timeseries(assume_ee_initialized=False)
+
+        mock_setup.assert_called_once()
+        assert result is False, "build_index_timeseries should return False when setup check fails"
 
 
 # ---------------------------------------------------------------------------
