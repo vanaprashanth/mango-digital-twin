@@ -14,6 +14,7 @@ import plotly.express as px
 import streamlit as st
 
 from app.sections.freshness import show_freshness_indicator
+from app.utils.date_filters import filter_by_date_range, render_date_range_selector
 
 
 def render_et0_validation_page(
@@ -71,12 +72,31 @@ def render_et0_validation_page(
         df["date"] = pd.to_datetime(df["date"])
 
     n = len(df)
-    st.subheader(f"Day-by-day ET0 comparison ({n} matched days)")
 
-    chart_cols = [c for c in ["open_meteo_et0_mm_day", "fao56_et0_mm_day"] if c in df.columns]
-    if chart_cols and "date" in df.columns:
+    # Date-range filter — default "Max" because the overlap window may be short.
+    selected_range = render_date_range_selector(
+        key="et0_validation_date_range", default="Max"
+    )
+    et0_plot_df = filter_by_date_range(df, selected_range=selected_range)
+
+    if et0_plot_df.empty:
+        st.warning(
+            f"No ET0 comparison data in the selected window ({selected_range}). "
+            "Try a wider time range or 'Max'."
+        )
+        return
+
+    st.caption(
+        f"Selected period: **{selected_range}** — "
+        f"{len(et0_plot_df)} days shown out of {n} total."
+    )
+
+    st.subheader(f"Day-by-day ET0 comparison ({len(et0_plot_df)} matched days)")
+
+    chart_cols = [c for c in ["open_meteo_et0_mm_day", "fao56_et0_mm_day"] if c in et0_plot_df.columns]
+    if chart_cols and "date" in et0_plot_df.columns:
         fig = px.line(
-            df,
+            et0_plot_df,
             x="date",
             y=chart_cols,
             title="Open-Meteo ET0 vs FAO-56 ET0 (mm/day)",
@@ -93,8 +113,8 @@ def render_et0_validation_page(
         ))
         st.plotly_chart(fig, use_container_width=True)
 
-    with st.expander("View comparison data table"):
-        display_df = df.copy()
+    with st.expander(f"View comparison data table (filtered: {selected_range})"):
+        display_df = et0_plot_df.copy()
         if "date" in display_df.columns:
             display_df["date"] = display_df["date"].dt.strftime("%Y-%m-%d")
         st.dataframe(display_df, use_container_width=True)

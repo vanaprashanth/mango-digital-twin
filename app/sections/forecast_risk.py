@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from app.sections.freshness import show_freshness_indicator
+from app.utils.date_filters import filter_by_date_range, render_date_range_selector
 
 
 def _risk_color(level: str) -> str:
@@ -76,9 +77,26 @@ def render_forecast_risk_page(forecast_df: pd.DataFrame | None) -> None:
         with forecast_weather_col4:
             st.metric(label="Forecast 7-day rainfall", value=f"{forecast_latest['rainfall_7day_mm']:.2f} mm")
 
+        # Date-range filter — default "Max" since the forecast window is already short.
+        fc_range = render_date_range_selector(
+            key="forecast_risk_date_range", default="Max"
+        )
+        fc_plot_df = filter_by_date_range(forecast_df, selected_range=fc_range)
+
+        if fc_plot_df.empty:
+            st.warning(
+                f"No forecast data in the selected window ({fc_range}). "
+                "Try 'Max' to see all available forecast dates."
+            )
+        else:
+            st.caption(
+                f"Selected period: **{fc_range}** — "
+                f"{len(fc_plot_df)} days shown out of {len(forecast_df)} total."
+            )
+
         st.write("### Forecast Rainfall Trend")
         forecast_rain_fig = px.line(
-            forecast_df, x="date", y=["rainfall_mm", "rainfall_7day_mm"],
+            fc_plot_df, x="date", y=["rainfall_mm", "rainfall_7day_mm"],
             title="Open-Meteo Forecast Rainfall and 7-Day Rolling Rainfall",
             labels={"date": "Date", "value": "Rainfall (mm)", "variable": "Metric"}
         )
@@ -86,7 +104,7 @@ def render_forecast_risk_page(forecast_df: pd.DataFrame | None) -> None:
 
         st.write("### Forecast Temperature Trend")
         forecast_temp_fig = px.line(
-            forecast_df, x="date", y=["temperature_avg_c", "temperature_max_c", "temperature_min_c"],
+            fc_plot_df, x="date", y=["temperature_avg_c", "temperature_max_c", "temperature_min_c"],
             title="Open-Meteo Forecast Temperature",
             labels={"date": "Date", "value": "Temperature (\u00b0C)", "variable": "Metric"}
         )
@@ -94,7 +112,7 @@ def render_forecast_risk_page(forecast_df: pd.DataFrame | None) -> None:
 
         st.write("### Forecast Risk Score Trend")
         forecast_risk_fig = px.line(
-            forecast_df, x="date",
+            fc_plot_df, x="date",
             y=["irrigation_risk_score", "heat_stress_risk_score", "disease_risk_score"],
             title="Open-Meteo Forecast Mango Risk Scores",
             labels={"date": "Date", "value": "Risk score", "variable": "Risk type"}

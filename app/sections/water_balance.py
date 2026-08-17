@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 from app.sections.freshness import show_freshness_indicator
+from app.utils.date_filters import filter_by_date_range, render_date_range_selector
 
 
 def _risk_color(level: str) -> str:
@@ -82,10 +83,30 @@ def render_water_balance_page(fao56_water_balance_df: pd.DataFrame | None) -> No
 
         st.divider()
 
+        # Date-range filter — applied to all time-series charts below.
+        # Metrics above (Latest Water Balance Status) always show the most
+        # recent row from the full dataset, unaffected by this filter.
+        selected_range = render_date_range_selector(
+            key="water_balance_date_range", default="1 year"
+        )
+        wb_plot_df = filter_by_date_range(fao56_water_balance_df, selected_range=selected_range)
+
+        if wb_plot_df.empty:
+            st.warning(
+                f"No water-balance data in the selected window ({selected_range}). "
+                "Try a wider time range."
+            )
+            return
+
+        st.caption(
+            f"Selected period: **{selected_range}** — "
+            f"{len(wb_plot_df)} days shown out of {len(fao56_water_balance_df)} total."
+        )
+
         st.subheader("Water Balance Trends")
 
         et_fig = px.line(
-            fao56_water_balance_df, x="date", y=["et0_mm", "etc_mm"],
+            wb_plot_df, x="date", y=["et0_mm", "etc_mm"],
             title="ET0 and ETc Over Time",
             labels={"date": "Date", "value": "mm/day", "variable": "Metric"},
         )
@@ -98,14 +119,14 @@ def render_water_balance_page(fao56_water_balance_df: pd.DataFrame | None) -> No
         rain_etc_fig = make_subplots(specs=[[{"secondary_y": True}]])
         rain_etc_fig.add_trace(
             go.Bar(
-                x=fao56_water_balance_df["date"], y=fao56_water_balance_df["rainfall_mm"],
+                x=wb_plot_df["date"], y=wb_plot_df["rainfall_mm"],
                 name="Rainfall (mm)",
             ),
             secondary_y=False,
         )
         rain_etc_fig.add_trace(
             go.Scatter(
-                x=fao56_water_balance_df["date"], y=fao56_water_balance_df["etc_mm"],
+                x=wb_plot_df["date"], y=wb_plot_df["etc_mm"],
                 name="ETc (mm/day)", mode="lines",
             ),
             secondary_y=True,
@@ -117,7 +138,7 @@ def render_water_balance_page(fao56_water_balance_df: pd.DataFrame | None) -> No
         st.plotly_chart(rain_etc_fig, use_container_width=True)
 
         depletion_fig = px.line(
-            fao56_water_balance_df, x="date", y="root_zone_depletion_mm",
+            wb_plot_df, x="date", y="root_zone_depletion_mm",
             title="Root-Zone Depletion Over Time",
             labels={"date": "Date", "root_zone_depletion_mm": "Depletion (mm)"},
         )
@@ -132,14 +153,14 @@ def render_water_balance_page(fao56_water_balance_df: pd.DataFrame | None) -> No
         st.plotly_chart(depletion_fig, use_container_width=True)
 
         ks_fig = px.line(
-            fao56_water_balance_df, x="date", y="water_stress_coefficient_ks",
+            wb_plot_df, x="date", y="water_stress_coefficient_ks",
             title="Ks Water-Stress Coefficient Over Time",
             labels={"date": "Date", "water_stress_coefficient_ks": "Ks"},
         )
         st.plotly_chart(ks_fig, use_container_width=True)
 
         stress_level_counts_df = (
-            fao56_water_balance_df["water_stress_level"]
+            wb_plot_df["water_stress_level"]
             .value_counts()
             .reindex(["Low", "Medium", "High"], fill_value=0)
             .rename_axis("water_stress_level")
@@ -147,7 +168,7 @@ def render_water_balance_page(fao56_water_balance_df: pd.DataFrame | None) -> No
         )
         stress_level_fig = px.bar(
             stress_level_counts_df, x="water_stress_level", y="days",
-            title="Water-Stress Level Counts (full date range)",
+            title=f"Water-Stress Level Counts ({selected_range})",
             labels={"water_stress_level": "Water-stress level", "days": "Number of days"},
         )
         st.plotly_chart(stress_level_fig, use_container_width=True)
@@ -167,8 +188,8 @@ def render_water_balance_page(fao56_water_balance_df: pd.DataFrame | None) -> No
 
         st.subheader("Raw FAO-56 Water Balance Table")
 
-        with st.expander("FAO-56 water balance table (full)", expanded=False):
-            fao56_preview = fao56_water_balance_df.copy()
+        with st.expander(f"FAO-56 water balance table (filtered: {selected_range})", expanded=False):
+            fao56_preview = wb_plot_df.copy()
             fao56_preview["date"] = fao56_preview["date"].dt.strftime("%Y-%m-%d")
             numeric_columns = fao56_preview.select_dtypes(include="number").columns
             fao56_preview[numeric_columns] = fao56_preview[numeric_columns].round(3)

@@ -67,6 +67,17 @@ def render_overview_map_page(config, latest: "pd.Series", has_soil_adjusted_irri
         {"lat": [config.latitude], "lon": [config.longitude], "location": ["Study orchard"]}
     )
 
+    # Detect Streamlit theme and pick the appropriate tile style.
+    # carto-darkmatter is dark, carto-positron is light — both are token-free.
+    try:
+        _theme_base = st.get_option("theme.base")
+    except Exception:
+        _theme_base = None
+    _map_style = "carto-darkmatter" if _theme_base == "dark" else "carto-positron"
+    # Marker colour stays red on the dark basemap (visible against dark tiles);
+    # use a brighter orange-red on light tiles for consistency.
+    _marker_color = "#ff4444" if _theme_base == "dark" else "red"
+
     map_fig = px.scatter_mapbox(
         map_df,
         lat="lat",
@@ -76,9 +87,9 @@ def render_overview_map_page(config, latest: "pd.Series", has_soil_adjusted_irri
         height=450,
         center={"lat": config.latitude, "lon": config.longitude},
     )
-    map_fig.update_traces(marker=dict(size=14, color="red"))
+    map_fig.update_traces(marker=dict(size=14, color=_marker_color))
     map_fig.update_layout(
-        mapbox_style="carto-positron",
+        mapbox_style=_map_style,
         margin={"r": 0, "t": 0, "l": 0, "b": 0},
     )
     st.plotly_chart(map_fig, use_container_width=True, config={"scrollZoom": True})

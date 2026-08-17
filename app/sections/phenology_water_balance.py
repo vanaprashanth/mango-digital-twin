@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from app.sections.freshness import show_freshness_indicator
+from app.utils.date_filters import filter_by_date_range, render_date_range_selector
 
 
 def _risk_color(level: str) -> str:
@@ -84,24 +85,46 @@ def render_phenology_water_balance_page(
 
         st.divider()
 
+        # Date-range filter — applied to time-series charts only.
+        # Metrics and stage-based charts reflect the selected period too.
+        selected_range = render_date_range_selector(
+            key="phenology_wb_date_range", default="1 year"
+        )
+        pwb_plot_df = filter_by_date_range(
+            fao56_phenology_water_balance_df, selected_range=selected_range
+        )
+
+        if pwb_plot_df.empty:
+            st.warning(
+                f"No phenology water-balance data in the selected window "
+                f"({selected_range}). Try a wider time range."
+            )
+            return
+
+        st.caption(
+            f"Selected period: **{selected_range}** — "
+            f"{len(pwb_plot_df)} days shown out of "
+            f"{len(fao56_phenology_water_balance_df)} total."
+        )
+
         st.subheader("Phenology-Aware Water Balance Trends")
 
         kc_fig = px.line(
-            fao56_phenology_water_balance_df, x="date", y="kc",
+            pwb_plot_df, x="date", y="kc",
             title="Crop Coefficient (Kc) Over Time",
             labels={"date": "Date", "kc": "Kc"},
         )
         st.plotly_chart(kc_fig, use_container_width=True)
 
         phen_et_fig = px.line(
-            fao56_phenology_water_balance_df, x="date", y=["et0_mm_day", "etc_mm_day"],
+            pwb_plot_df, x="date", y=["et0_mm_day", "etc_mm_day"],
             title="ET0 and ETc Over Time (Phenology-Aware)",
             labels={"date": "Date", "value": "mm/day", "variable": "Metric"},
         )
         st.plotly_chart(phen_et_fig, use_container_width=True)
 
         phen_depletion_fig = px.line(
-            fao56_phenology_water_balance_df, x="date", y="root_zone_depletion_mm",
+            pwb_plot_df, x="date", y="root_zone_depletion_mm",
             title="Root-Zone Depletion Over Time (Phenology-Aware)",
             labels={"date": "Date", "root_zone_depletion_mm": "Depletion (mm)"},
         )
@@ -116,14 +139,14 @@ def render_phenology_water_balance_page(
         st.plotly_chart(phen_depletion_fig, use_container_width=True)
 
         phen_ks_fig = px.line(
-            fao56_phenology_water_balance_df, x="date", y="ks",
+            pwb_plot_df, x="date", y="ks",
             title="Ks Water-Stress Coefficient Over Time (Phenology-Aware)",
             labels={"date": "Date", "ks": "Ks"},
         )
         st.plotly_chart(phen_ks_fig, use_container_width=True)
 
         phen_stress_level_counts_df = (
-            fao56_phenology_water_balance_df["water_stress_level"]
+            pwb_plot_df["water_stress_level"]
             .value_counts()
             .reindex(["Low", "Medium", "High"], fill_value=0)
             .rename_axis("water_stress_level")
@@ -131,7 +154,7 @@ def render_phenology_water_balance_page(
         )
         phen_stress_level_fig = px.bar(
             phen_stress_level_counts_df, x="water_stress_level", y="days",
-            title="Water-Stress Level Counts (full date range, phenology-aware)",
+            title=f"Water-Stress Level Counts ({selected_range}, phenology-aware)",
             labels={"water_stress_level": "Water-stress level", "days": "Number of days"},
         )
         st.plotly_chart(phen_stress_level_fig, use_container_width=True)
@@ -146,11 +169,11 @@ def render_phenology_water_balance_page(
         ]
         stages_present = [
             s for s in phen_wb_stage_order
-            if s in fao56_phenology_water_balance_df["mango_stage"].unique()
+            if s in pwb_plot_df["mango_stage"].unique()
         ]
 
         stress_by_stage_df = (
-            fao56_phenology_water_balance_df
+            pwb_plot_df
             .groupby(["mango_stage", "water_stress_level"])
             .size()
             .reset_index(name="days")
@@ -164,7 +187,7 @@ def render_phenology_water_balance_page(
         st.plotly_chart(stress_by_stage_fig, use_container_width=True)
 
         etc_by_stage_df = (
-            fao56_phenology_water_balance_df
+            pwb_plot_df
             .groupby("mango_stage")["etc_mm_day"]
             .mean()
             .reindex(stages_present)
@@ -262,8 +285,8 @@ def render_phenology_water_balance_page(
 
         st.subheader("Raw Phenology-Aware FAO-56 Water Balance Table")
 
-        with st.expander("Phenology-aware FAO-56 water balance table (full)", expanded=False):
-            phen_wb_preview = fao56_phenology_water_balance_df.copy()
+        with st.expander(f"Phenology-aware FAO-56 water balance table (filtered: {selected_range})", expanded=False):
+            phen_wb_preview = pwb_plot_df.copy()
             phen_wb_preview["date"] = phen_wb_preview["date"].dt.strftime("%Y-%m-%d")
             numeric_columns = phen_wb_preview.select_dtypes(include="number").columns
             phen_wb_preview[numeric_columns] = phen_wb_preview[numeric_columns].round(3)

@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from app.sections.freshness import show_freshness_indicator
+from app.utils.date_filters import filter_by_date_range, render_date_range_selector
 
 
 def render_fao56_model_comparison_page(
@@ -85,10 +86,29 @@ def render_fao56_model_comparison_page(
 
         st.divider()
 
+        # Date-range filter — applied to all time-series comparison charts below.
+        # Summary metrics above (matched days, mean differences) always reflect
+        # the full dataset to avoid partial-period confusion.
+        selected_range = render_date_range_selector(
+            key="fao56_comparison_date_range", default="1 year"
+        )
+        comp_plot_df = filter_by_date_range(comp_df, selected_range=selected_range)
+
+        if comp_plot_df.empty:
+            st.warning(
+                f"No model comparison data in the selected window ({selected_range}). "
+                "Try a wider time range."
+            )
+        else:
+            st.caption(
+                f"Selected period: **{selected_range}** — "
+                f"{len(comp_plot_df)} days shown out of {len(comp_df)} total."
+            )
+
         st.subheader("Comparison Charts")
 
         etc_diff_fig = px.line(
-            comp_df, x="date", y="etc_difference",
+            comp_plot_df, x="date", y="etc_difference",
             title="ETc Difference Over Time (Phenology-Aware minus Constant-Kc)",
             labels={"date": "Date", "etc_difference": "ETc difference (mm/day)"},
         )
@@ -96,21 +116,21 @@ def render_fao56_model_comparison_page(
         st.plotly_chart(etc_diff_fig, use_container_width=True)
 
         etc_both_fig = px.line(
-            comp_df, x="date", y=["constant_etc", "phenology_etc"],
+            comp_plot_df, x="date", y=["constant_etc", "phenology_etc"],
             title="ETc: Constant-Kc vs Phenology-Aware",
             labels={"date": "Date", "value": "ETc (mm/day)", "variable": "Model"},
         )
         st.plotly_chart(etc_both_fig, use_container_width=True)
 
         kc_both_fig = px.line(
-            comp_df, x="date", y=["constant_kc", "phenology_kc"],
+            comp_plot_df, x="date", y=["constant_kc", "phenology_kc"],
             title="Kc: Constant-Kc vs Phenology-Aware",
             labels={"date": "Date", "value": "Kc", "variable": "Model"},
         )
         st.plotly_chart(kc_both_fig, use_container_width=True)
 
         ks_diff_fig = px.line(
-            comp_df, x="date", y="ks_difference",
+            comp_plot_df, x="date", y="ks_difference",
             title="Ks Difference Over Time (Phenology-Aware minus Constant-Kc)",
             labels={"date": "Date", "ks_difference": "Ks difference"},
         )
@@ -118,7 +138,7 @@ def render_fao56_model_comparison_page(
         st.plotly_chart(ks_diff_fig, use_container_width=True)
 
         stress_changed_counts_df = (
-            comp_df["stress_level_changed"].astype(bool)
+            comp_plot_df["stress_level_changed"].astype(bool)
             .value_counts()
             .reindex([False, True], fill_value=0)
             .rename(index={False: "Unchanged", True: "Changed"})
@@ -140,10 +160,10 @@ def render_fao56_model_comparison_page(
             "Maturity / harvest",
             "Rest / vegetative phase",
         ]
-        comp_stages_present = [s for s in comp_stage_order if s in comp_df["mango_stage"].unique()]
+        comp_stages_present = [s for s in comp_stage_order if s in comp_plot_df["mango_stage"].unique()]
 
         stage_etc_diff_df = (
-            comp_df.groupby("mango_stage")["etc_difference"]
+            comp_plot_df.groupby("mango_stage")["etc_difference"]
             .mean()
             .reindex(comp_stages_present)
             .rename_axis("mango_stage")
@@ -159,7 +179,7 @@ def render_fao56_model_comparison_page(
         st.plotly_chart(stage_etc_diff_fig, use_container_width=True)
 
         stage_stress_change_df = (
-            comp_df.assign(stress_level_changed=comp_df["stress_level_changed"].astype(bool))
+            comp_plot_df.assign(stress_level_changed=comp_plot_df["stress_level_changed"].astype(bool))
             .groupby("mango_stage")["stress_level_changed"]
             .sum()
             .reindex(comp_stages_present, fill_value=0)
@@ -175,7 +195,7 @@ def render_fao56_model_comparison_page(
         st.plotly_chart(stage_stress_change_fig, use_container_width=True)
 
         top10_df = (
-            comp_df.assign(abs_etc_difference=comp_df["etc_difference"].abs())
+            comp_plot_df.assign(abs_etc_difference=comp_plot_df["etc_difference"].abs())
             .sort_values("abs_etc_difference", ascending=False)
             .head(10)
             .copy()
@@ -215,8 +235,8 @@ def render_fao56_model_comparison_page(
 
         st.subheader("Raw Data")
 
-        with st.expander("FAO-56 model comparison table (full)", expanded=False):
-            comp_preview = comp_df.copy()
+        with st.expander(f"FAO-56 model comparison table (filtered: {selected_range})", expanded=False):
+            comp_preview = comp_plot_df.copy()
             comp_preview["date"] = comp_preview["date"].dt.strftime("%Y-%m-%d")
             numeric_columns = comp_preview.select_dtypes(include="number").columns
             comp_preview[numeric_columns] = comp_preview[numeric_columns].round(3)

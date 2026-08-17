@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from app.sections.freshness import show_freshness_indicator
+from app.utils.date_filters import filter_by_date_range, render_date_range_selector
 
 
 def render_historical_risk_page(df: pd.DataFrame) -> None:
@@ -13,23 +14,20 @@ def render_historical_risk_page(df: pd.DataFrame) -> None:
 
     show_freshness_indicator(df, label="Historical risk", staleness_warning_days=7)
 
-    st.subheader("Time Range Filter")
-
-    min_date = df["date"].min().date()
-    max_date = df["date"].max().date()
-
-    selected_range = st.date_input(
-        "Select date range",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date
+    selected_range = render_date_range_selector(
+        key="historical_risk_date_range", default="1 year"
     )
+    filtered_df = filter_by_date_range(df, selected_range=selected_range)
 
-    if isinstance(selected_range, tuple) and len(selected_range) == 2:
-        start_date, end_date = selected_range
-        filtered_df = df[(df["date"].dt.date >= start_date) & (df["date"].dt.date <= end_date)]
-    else:
-        filtered_df = df.copy()
+    if filtered_df.empty:
+        st.warning(
+            f"No historical risk data in the selected window ({selected_range}). "
+            "Try a wider time range."
+        )
+        return
+
+    st.caption(f"Selected period: **{selected_range}** — "
+               f"{len(filtered_df)} days shown out of {len(df)} total.")
 
     st.divider()
 

@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 from app.sections.freshness import show_freshness_indicator
+from app.utils.date_filters import filter_by_date_range, render_date_range_selector
 
 
 def _risk_color(level: str) -> str:
@@ -80,15 +81,8 @@ def render_combined_intelligence_page(combined_feature_df: pd.DataFrame | None) 
         filter_col1, filter_col2 = st.columns(2)
 
         with filter_col1:
-            combined_min_date = combined_feature_df["date"].min().date()
-            combined_max_date = combined_feature_df["date"].max().date()
-
-            combined_selected_range = st.date_input(
-                "Date range",
-                value=(combined_min_date, combined_max_date),
-                min_value=combined_min_date,
-                max_value=combined_max_date,
-                key="combined_intelligence_date_range",
+            combined_selected_range = render_date_range_selector(
+                key="combined_intelligence_date_range", default="1 year"
             )
 
         with filter_col2:
@@ -100,14 +94,9 @@ def render_combined_intelligence_page(combined_feature_df: pd.DataFrame | None) 
                 key="combined_intelligence_freshness_filter",
             )
 
-        if isinstance(combined_selected_range, tuple) and len(combined_selected_range) == 2:
-            combined_start_date, combined_end_date = combined_selected_range
-            filtered_combined_df = combined_feature_df[
-                (combined_feature_df["date"].dt.date >= combined_start_date)
-                & (combined_feature_df["date"].dt.date <= combined_end_date)
-            ]
-        else:
-            filtered_combined_df = combined_feature_df.copy()
+        filtered_combined_df = filter_by_date_range(
+            combined_feature_df, selected_range=combined_selected_range
+        )
 
         if selected_freshness:
             filtered_combined_df = filtered_combined_df[
@@ -115,8 +104,15 @@ def render_combined_intelligence_page(combined_feature_df: pd.DataFrame | None) 
             ]
 
         if filtered_combined_df.empty:
-            st.warning("No rows match the selected date range and freshness filters.")
+            st.warning(
+                f"No data matches the selected window ({combined_selected_range}) "
+                "and freshness filters. Try a wider time range or different freshness."
+            )
         else:
+            st.caption(
+                f"Selected period: **{combined_selected_range}** — "
+                f"{len(filtered_combined_df)} rows shown out of {len(combined_feature_df)} total."
+            )
             st.divider()
 
             st.subheader("Risk Trends")

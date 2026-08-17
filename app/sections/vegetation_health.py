@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from app.sections.freshness import show_freshness_indicator
+from app.utils.date_filters import filter_by_date_range, render_date_range_selector
 
 
 def render_vegetation_health_page(
@@ -83,31 +84,50 @@ def render_vegetation_health_page(
 
         st.divider()
 
+        # Date-range filter for all S2 trend charts below.
+        # Default "Max" because Sentinel-2 data is sparse (~5-day revisit) so
+        # a 1-year window may have very few points.
+        s2_range = render_date_range_selector(
+            key="vegetation_s2_date_range", default="Max"
+        )
+        veg_plot_df = filter_by_date_range(vegetation_df, selected_range=s2_range)
+
+        if veg_plot_df.empty:
+            st.warning(
+                f"No Sentinel-2 vegetation data in the selected window ({s2_range}). "
+                "Try a wider time range or 'Max'."
+            )
+        else:
+            st.caption(
+                f"Selected period: **{s2_range}** — "
+                f"{len(veg_plot_df)} scenes shown out of {len(vegetation_df)} total."
+            )
+
         st.subheader("Vegetation Index Trends")
 
         ndvi_fig = px.line(
-            vegetation_df, x="date", y="ndvi_mean",
+            veg_plot_df, x="date", y="ndvi_mean",
             title="NDVI Over Time (vegetation greenness)",
             labels={"date": "Date", "ndvi_mean": "NDVI"},
         )
         st.plotly_chart(ndvi_fig, use_container_width=True)
 
         ndmi_fig = px.line(
-            vegetation_df, x="date", y="ndmi_mean",
+            veg_plot_df, x="date", y="ndmi_mean",
             title="NDMI Over Time (vegetation moisture)",
             labels={"date": "Date", "ndmi_mean": "NDMI"},
         )
         st.plotly_chart(ndmi_fig, use_container_width=True)
 
         ndre_fig = px.line(
-            vegetation_df, x="date", y="ndre_mean",
+            veg_plot_df, x="date", y="ndre_mean",
             title="NDRE Over Time (chlorophyll / canopy stress signal)",
             labels={"date": "Date", "ndre_mean": "NDRE"},
         )
         st.plotly_chart(ndre_fig, use_container_width=True)
 
         ndwi_fig = px.line(
-            vegetation_df, x="date", y="ndwi_mean",
+            veg_plot_df, x="date", y="ndwi_mean",
             title="NDWI Over Time (surface water signal)",
             labels={"date": "Date", "ndwi_mean": "NDWI"},
         )
@@ -115,7 +135,7 @@ def render_vegetation_health_page(
 
         st.write("### Combined Index View")
         combined_fig = px.line(
-            vegetation_df, x="date",
+            veg_plot_df, x="date",
             y=["ndvi_mean", "ndwi_mean", "ndmi_mean", "ndre_mean"],
             title="NDVI, NDWI, NDMI, and NDRE Over Time",
             labels={"date": "Date", "value": "Index value", "variable": "Index"},
@@ -126,8 +146,8 @@ def render_vegetation_health_page(
 
         st.subheader("Raw Tables")
 
-        with st.expander("Daily Sentinel-2 vegetation index table", expanded=False):
-            daily_preview = vegetation_df.copy()
+        with st.expander(f"Daily Sentinel-2 vegetation index table (filtered: {s2_range})", expanded=False):
+            daily_preview = veg_plot_df.copy()
             daily_preview["date"] = daily_preview["date"].dt.strftime("%Y-%m-%d")
             numeric_columns = daily_preview.select_dtypes(include="number").columns
             daily_preview[numeric_columns] = daily_preview[numeric_columns].round(3)
@@ -203,22 +223,38 @@ def render_vegetation_health_page(
             with s1_interp_col2:
                 st.info(f"**VH signal:** {s1_latest.get('vh_level', 'Unknown')}")
 
+        s1_range = render_date_range_selector(
+            key="vegetation_s1_date_range", default="Max"
+        )
+        s1_plot_df = filter_by_date_range(sentinel1_df, selected_range=s1_range)
+
+        if s1_plot_df.empty:
+            st.warning(
+                f"No Sentinel-1 SAR data in the selected window ({s1_range}). "
+                "Try a wider time range or 'Max'."
+            )
+        else:
+            st.caption(
+                f"Selected period: **{s1_range}** — "
+                f"{len(s1_plot_df)} scenes shown out of {len(sentinel1_df)} total."
+            )
+
         vv_fig = px.line(
-            sentinel1_df, x="date", y="vv_mean",
+            s1_plot_df, x="date", y="vv_mean",
             title="VV Backscatter Over Time (surface / soil roughness proxy)",
             labels={"date": "Date", "vv_mean": "VV (dB)"},
         )
         st.plotly_chart(vv_fig, use_container_width=True)
 
         vh_fig = px.line(
-            sentinel1_df, x="date", y="vh_mean",
+            s1_plot_df, x="date", y="vh_mean",
             title="VH Backscatter Over Time (vegetation volume proxy)",
             labels={"date": "Date", "vh_mean": "VH (dB)"},
         )
         st.plotly_chart(vh_fig, use_container_width=True)
 
-        with st.expander("Daily Sentinel-1 SAR table", expanded=False):
-            s1_preview = sentinel1_df.copy()
+        with st.expander(f"Daily Sentinel-1 SAR table (filtered: {s1_range})", expanded=False):
+            s1_preview = s1_plot_df.copy()
             if "date" in s1_preview.columns and hasattr(s1_preview["date"].iloc[0], "strftime"):
                 s1_preview["date"] = s1_preview["date"].dt.strftime("%Y-%m-%d")
             numeric_cols = s1_preview.select_dtypes(include="number").columns
