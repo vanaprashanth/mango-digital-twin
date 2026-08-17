@@ -1,0 +1,98 @@
+date,vv_mean,vh_mean,vv_vh_ratio_mean,orbit_pass,scene_count,latitude,longitude,buffer_m,vv_level,vh_level
+2025-01-04,-10.064089251949529,-16.90111204908814,6.837022797138614,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-01-11,-11.278932562599964,-17.55967530153182,6.280742738931854,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-01-16,-9.930758098998858,-17.26181087424621,7.33105277524735,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-01-23,-11.690845167824532,-18.284298691355225,6.593453523530693,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-01-28,-10.829777352117516,-17.934801042239677,7.105023690122161,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-02-04,-12.366817849829312,-19.18908482469061,6.822266974861298,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2025-02-09,-11.342475739161433,-19.10338525330635,7.760909514144917,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-02-16,-12.930034745098606,-19.92121431885708,6.991179573758476,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2025-02-21,-11.425651541944845,-19.30225176024076,7.876600218295918,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-02-28,-13.132307341834087,-20.252526090410083,7.120218748575994,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2025-03-05,-11.939832724761535,-20.14609461362999,8.206261888868456,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-03-12,-13.087799250151589,-20.0074606691462,6.919661418994611,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2025-03-17,-11.74168284359654,-19.97080860850957,8.229125764913036,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-03-24,-13.384840883563712,-20.4025163034198,7.017675419856088,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2025-03-29,-11.977412634906312,-20.37124955408462,8.393836919178309,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-04-05,-11.342738179395749,-17.966395453475123,6.623657274079374,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-04-10,-11.7163472301665,-19.998264861923392,8.281917631756892,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-04-17,-13.049309796393674,-19.99748315094314,6.948173354549466,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2025-04-22,-11.321882841022417,-19.154139325348847,7.832256484326432,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-04-29,-12.919493500183997,-20.11437816376396,7.194884663579963,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2025-05-04,-11.225291934215388,-19.33372081553985,8.10842888132446,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-05-11,-11.479484252980525,-18.459389646872182,6.979905393891663,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-05-16,-8.740924596745096,-16.162209100155962,7.421284503410867,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-05-23,-11.558986595657528,-18.007434022439888,6.44844742678236,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-05-28,-10.577372839435052,-17.701336825558762,7.123963986123711,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-06-04,-11.849468214526295,-18.46172467344661,6.612256458920319,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-06-09,-8.767684574335227,-16.654268492565407,7.88658391823018,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-06-16,-12.085778900222405,-18.917082773485856,6.831303873263453,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2025-06-21,-8.18679968759435,-16.796074367715363,8.609274680121013,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-06-28,-12.40371174611788,-19.33954408848182,6.935832342363939,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2025-07-03,-9.998384913156716,-18.21787601417129,8.219491101014572,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-07-10,-12.854874984254474,-19.5264394676837,6.671564483429227,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2025-07-15,-10.20687088469169,-18.28985743358559,8.0829865488939,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-07-22,-11.204233842545936,-17.928358952817895,6.72412511027196,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-07-27,-9.978982157456937,-17.312726333980105,7.333744176523171,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-08-03,-11.95589847082178,-18.4651998002201,6.509301329398317,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-08-08,-8.97396512123766,-16.090814277115435,7.116849155877775,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-08-15,-10.965910885389292,-17.23351717553613,6.267606290146837,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-08-20,-9.590954977709284,-16.635893796217168,7.044938818507884,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-08-27,-11.37074573217565,-17.694043319915263,6.323297587739614,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-09-01,-9.923060891682718,-17.0407498232601,7.117688931577382,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-09-08,-11.18870727568408,-17.558455096605172,6.369747820921091,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-09-13,-9.602083096419186,-16.54112131143814,6.939038215018954,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-09-20,-10.00966048399477,-16.22654340395034,6.216882919955571,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-09-25,-9.889718881458975,-16.63919988893512,6.749481007476144,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-10-07,-9.06238347220478,-15.580716717246949,6.518333245042166,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-10-14,-10.690748665346646,-16.847619694335823,6.156871028989176,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-10-19,-8.779219794453597,-15.068040849571451,6.288821055117856,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-10-26,-10.170949378636704,-16.108219392135233,5.937270013498528,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-10-31,-9.441872496966225,-15.91385330580017,6.471980808833946,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-11-01,-10.582881230160975,-16.32638311754299,5.743501887382012,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-11-07,-10.019812352231977,-15.748884517031986,5.7290721648000105,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-11-12,-9.591477988713825,-15.895103302866646,6.303625314152821,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-11-19,-9.929558453463605,-15.918324966945718,5.988766513482114,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-11-24,-8.719737510333182,-15.24206227235135,6.522324762018167,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-12-01,-10.155535684752827,-15.988265900975016,5.83273021622219,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-12-06,-9.445895084393726,-16.286683899669494,6.8407888152757685,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-12-13,-10.898549296890437,-17.35183665624609,6.453287359355654,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-12-18,-10.1131746426817,-16.91649255238771,6.803317909706008,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-12-25,-11.399850732545495,-17.734338776753898,6.334488044208401,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-12-30,-10.496133747142888,-17.587391625536156,7.091257878393268,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2026-01-06,-11.848042576358312,-18.07686876290446,6.228826186546149,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-01-11,-10.815953275678924,-18.002605947505742,7.186652671826819,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-01-18,-12.22371289240131,-18.661098088602515,6.437385196201205,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-01-23,-11.134966511402194,-18.32651351262768,7.191547001225484,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-01-30,-12.139964125265868,-18.80129318646149,6.661329061195618,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-02-04,-11.6227347236509,-18.924156086146425,7.301421362495525,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-02-11,-12.665069496508236,-19.37209774776301,6.707028251254775,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-02-16,-11.78718053396733,-19.539749419144567,7.752568885177236,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-02-23,-12.385148876846443,-19.38654351234437,7.001394635497928,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-02-28,-11.667742694208334,-19.639660576921628,7.971917882713294,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-03-07,-12.909944748639733,-20.04633202831408,7.136387279674347,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-03-12,-11.71838015621457,-19.496570892081696,7.778190735867126,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-03-19,-11.538247735455425,-18.236252951858443,6.698005216403018,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-03-24,-12.050365092095085,-19.811795265054464,7.761430172959379,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-03-31,-13.099111086185149,-20.102973904462537,7.003862818277391,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-04-12,-13.529600300439018,-20.56576825625857,7.036167955819551,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-04-17,-11.967591955164648,-20.34683040171381,8.379238446549163,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-04-24,-13.326689493446317,-20.883258687419808,7.556569193973493,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-04-29,-11.94713225366389,-20.322580006562397,8.375447752898504,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-05-06,-12.548209127914424,-19.92211757203977,7.373908444125346,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-05-11,-11.136760332190102,-19.367613436809133,8.230853104619031,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-05-18,-11.535537394289534,-18.59667382549331,7.061136431203774,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-05-23,-11.35865026034408,-19.409923381589437,8.051273121245352,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-05-30,-12.608629467318607,-19.950373630734084,7.341744163415477,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-06-04,-11.5006542499054,-19.796802343913534,8.296148094008133,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-06-11,-13.198326877918769,-20.32509508295314,7.126768205034374,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-06-16,-11.42853322635872,-19.91516645615747,8.486633229798748,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-06-23,-12.720000095433251,-20.069080009302876,7.349079913869621,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-06-28,-11.73155408939444,-20.27324757609401,8.541693486699574,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-06-30,-13.515204670676656,-20.770666363215906,7.255461692539249,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-07-12,-13.632330021301623,-21.07050685765478,7.438176836353158,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-07-17,-12.129643012206987,-20.766948121169925,8.637305108962936,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-07-24,-13.57671528961281,-21.1200494559063,7.543334166293491,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-07-29,-11.521418800670322,-20.309565438512895,8.788146637842576,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2026-08-05,-13.666661011532376,-20.938209602981395,7.2715485914490205,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
+2026-08-10,-12.26310978173698,-21.143674032626677,8.880564250889694,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
