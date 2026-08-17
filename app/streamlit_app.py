@@ -12,6 +12,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.sections.fao56_model_comparison import render_fao56_model_comparison_page
 from app.sections.irrigation_events import render_irrigation_events_page
+from app.sections.irrigation_what_if import render_irrigation_what_if_page
 from app.sections.water_balance import render_water_balance_page
 from app.sections.phenology_water_balance import render_phenology_water_balance_page
 from app.sections.fao56_sensitivity_analysis import render_fao56_sensitivity_analysis_page
@@ -63,6 +64,7 @@ ET0_COMPARISON_CSV_PATH = config.path("et0_comparison_csv")
 ET0_COMPARISON_SUMMARY_MD_PATH = config.path("et0_comparison_summary_md")
 PIPELINE_METADATA_PATH = config.path("pipeline_run_metadata_json")
 IRRIGATION_EVENTS_PATH = config.path("irrigation_events_csv")
+FAO56_INTERPOLATED_KC_PATH = config.path("fao56_interpolated_kc_water_balance_csv")
 
 
 st.set_page_config(
@@ -572,6 +574,20 @@ try:
 except Exception:
     irrigation_events_df = None
 
+# Interpolated-Kc FAO-56 water balance (preferred input for What-If Planner
+# and already used by the irrigation advisory script)
+fao56_interpolated_kc_df = None
+
+if FAO56_INTERPOLATED_KC_PATH.exists():
+    try:
+        fao56_interpolated_kc_df = pd.read_csv(FAO56_INTERPOLATED_KC_PATH)
+        fao56_interpolated_kc_df["date"] = pd.to_datetime(fao56_interpolated_kc_df["date"])
+        fao56_interpolated_kc_df = (
+            fao56_interpolated_kc_df.sort_values("date").reset_index(drop=True)
+        )
+    except Exception:
+        fao56_interpolated_kc_df = None
+
 fao56_sensitivity_df = None
 
 if FAO56_SENSITIVITY_CSV_PATH.exists():
@@ -630,6 +646,7 @@ page = st.sidebar.radio(
         "ET0 Validation",
         "Irrigation Advisory",
         "Irrigation Events",
+        "Irrigation What-If",
         "What-if Simulator",
         "Raw Data",
     ],
@@ -652,6 +669,7 @@ render_status_badge("FAO-56 sensitivity analysis (processed)", FAO56_SENSITIVITY
 render_status_badge("Irrigation advisory (processed)", FORECAST_AWARE_ADVISORY_PATH)
 render_status_badge("ET0 comparison (processed)", ET0_COMPARISON_CSV_PATH)
 render_status_badge("Irrigation events (manual)", IRRIGATION_EVENTS_PATH)
+render_status_badge("Interpolated-Kc FAO-56 water balance (processed)", FAO56_INTERPOLATED_KC_PATH)
 
 st.sidebar.divider()
 render_data_freshness_section()
@@ -776,6 +794,17 @@ elif page == "Irrigation Advisory":
 
 elif page == "Irrigation Events":
     render_irrigation_events_page(irrigation_events_df)
+
+
+# =======================================================================
+# PAGE: Irrigation What-If Planner
+# =======================================================================
+
+elif page == "Irrigation What-If":
+    # Prefer interpolated-Kc output (richest columns: mango_stage, ks, etc.)
+    # Fall back to constant-Kc if interpolated is unavailable.
+    _what_if_df = fao56_interpolated_kc_df if fao56_interpolated_kc_df is not None else fao56_water_balance_df
+    render_irrigation_what_if_page(_what_if_df)
 
 
 # =======================================================================
