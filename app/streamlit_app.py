@@ -605,7 +605,7 @@ page = st.sidebar.radio(
         "Historical Risk",
         "Forecast Risk",
         "Soil Intelligence",
-        "Vegetation Health",
+        "Remote Sensing Health",
         "Combined Intelligence",
         "Water Balance",
         "Mango Phenology",
@@ -685,7 +685,7 @@ elif page == "Soil Intelligence":
 # PAGE: Vegetation Health
 # =======================================================================
 
-elif page == "Vegetation Health":
+elif page == "Remote Sensing Health":
     render_vegetation_health_page(vegetation_df, vegetation_timeseries_df, sentinel1_df)
 
 

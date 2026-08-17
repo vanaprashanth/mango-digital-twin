@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime as dt
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -12,10 +14,33 @@ def render_vegetation_health_page(
     vegetation_timeseries_df: pd.DataFrame | None,
     sentinel1_df: pd.DataFrame | None = None,
 ) -> None:
-    """Render the Vegetation Health (Sentinel-2) dashboard page."""
+    """Render the Remote Sensing Health dashboard page."""
 
-    st.title("Vegetation Health (Sentinel-2)")
-    show_freshness_indicator(vegetation_df, label="Vegetation health", staleness_warning_days=14)
+    st.title("Remote Sensing Health")
+    show_freshness_indicator(
+        vegetation_df,
+        label="Sentinel-2 vegetation",
+        staleness_warning_days=0,  # custom staleness message below
+    )
+
+    # ------------------------------------------------------------------
+    # SECTION 1: Sentinel-2 Optical Vegetation Indices
+    # ------------------------------------------------------------------
+    st.subheader("Sentinel-2 Optical Vegetation Indices")
+
+    # Custom S2 staleness explanation (clouds are the likely cause, not a
+    # pipeline failure — and S1 SAR fallback is available below).
+    if vegetation_df is not None and not vegetation_df.empty and "date" in vegetation_df.columns:
+        _s2_dates = pd.to_datetime(vegetation_df["date"], errors="coerce").dropna()
+        if not _s2_dates.empty:
+            _s2_age = (dt.date.today() - _s2_dates.max().date()).days
+            if _s2_age > 14:
+                st.warning(
+                    f"⚠️ Sentinel-2 optical observation is {_s2_age} day(s) old "
+                    f"(latest: {_s2_dates.max().date().strftime('%Y-%m-%d')}). "
+                    "This can happen during cloudy periods or when no cloud-free scene is "
+                    "available. Sentinel-1 SAR fallback below provides cloudy-season continuity."
+                )
 
     st.caption(
         "Satellite-derived vegetation/water indices from Sentinel-2 imagery, aggregated to one "
@@ -163,10 +188,10 @@ def render_vegetation_health_page(
 
 
     # ------------------------------------------------------------------
-    # Sentinel-1 SAR fallback section (cloudy-season proxy signals)
+    # SECTION 2: Sentinel-1 SAR Cloudy-Season Fallback
     # ------------------------------------------------------------------
     st.divider()
-    st.subheader("Sentinel-1 SAR Backscatter (Cloudy-Season Fallback)")
+    st.subheader("Sentinel-1 SAR Cloudy-Season Fallback")
 
     st.warning(
         "⚠️ **These are radar backscatter proxy signals, not direct NDVI or "
@@ -192,6 +217,29 @@ def render_vegetation_health_page(
         s1_latest = sentinel1_df.iloc[-1]
         latest_date = s1_latest["date"]
         latest_date_str = latest_date.strftime("%Y-%m-%d") if hasattr(latest_date, "strftime") else str(latest_date)
+
+        # S1 freshness message
+        try:
+            _s1_age = (dt.date.today() - pd.to_datetime(latest_date).date()).days
+            if _s1_age <= 7:
+                st.success(
+                    f"✅ Sentinel-1 SAR fallback is current ({_s1_age} day(s) old, "
+                    f"latest: {latest_date_str}) and can support cloudy-season continuity."
+                )
+            elif _s1_age <= 14:
+                st.info(
+                    f"ℹ️ Sentinel-1 SAR fallback is recent ({_s1_age} day(s) old, "
+                    f"latest: {latest_date_str}). SAR coverage is available for the "
+                    "cloudy-season window."
+                )
+            else:
+                st.warning(
+                    f"⚠️ Sentinel-1 SAR observation is {_s1_age} day(s) old "
+                    f"(latest: {latest_date_str}). SAR data may not reflect current "
+                    "conditions. Run `python main.py --refresh-sentinel2` to refresh."
+                )
+        except Exception:
+            pass
 
         st.caption(
             f"Latest Sentinel-1 scene: {latest_date_str} · "
