@@ -114,6 +114,8 @@ paths:
   forecast_risk_csv: "data/processed/muthukur_open_meteo_forecast_risk.csv"
   sentinel2_daily_csv: "data/processed/muthukur_sentinel2_daily_indices.csv"
   sentinel2_timeseries_csv: "data/processed/muthukur_sentinel2_index_timeseries.csv"
+  sentinel1_daily_csv: "data/processed/muthukur_sentinel1_daily_indices.csv"
+  sentinel1_sar_timeseries_csv: "data/processed/muthukur_sentinel1_sar_timeseries.csv"
   combined_feature_table_csv: "data/processed/muthukur_combined_feature_table.csv"
   fao56_water_balance_csv: "data/processed/muthukur_fao56_water_balance.csv"
   mango_phenology_calendar_csv: "data/processed/muthukur_mango_phenology_calendar.csv"

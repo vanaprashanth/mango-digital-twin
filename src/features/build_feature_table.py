@@ -40,6 +40,7 @@ INPUTS
   data/processed/muthukur_weather_risk_scores.csv  (historical weather/risk)
   data/processed/muthukur_sentinel2_daily_indices.csv (daily vegetation)
   data/raw/muthukur_soilgrids.csv                  (static SoilGrids data)
+  data/processed/muthukur_sentinel1_daily_indices.csv (optional SAR fallback)
 
 OUTPUT
   data/processed/muthukur_combined_feature_table.csv
@@ -105,6 +106,21 @@ VEGETATION_OUTPUT_COLUMNS = [
     "scene_count",
 ]
 
+# Sentinel-1 SAR columns added by the optional nearest-prior join.
+# Kept separate so the S2 join logic is unchanged even when S1 is absent.
+SENTINEL1_OUTPUT_COLUMNS = [
+    "sentinel1_date",
+    "vv_mean",
+    "vh_mean",
+    "vv_vh_ratio_mean",
+    "orbit_pass",
+    "scene_count_s1",  # renamed from scene_count to avoid collision with S2
+]
+
+# Freshness thresholds for Sentinel-1 (same bucket widths as S2 for consistency).
+S1_FRESH_MAX_DAYS = 7
+S1_MODERATE_MAX_DAYS = 15
+
 
 def _freshness_label(days) -> str:
     """Turn days-since-observation into a beginner-friendly freshness label."""
@@ -113,6 +129,17 @@ def _freshness_label(days) -> str:
     if days <= FRESH_MAX_DAYS:
         return "Fresh"
     if days <= MODERATE_MAX_DAYS:
+        return "Moderate"
+    return "Stale"
+
+
+def _s1_freshness_label(days) -> str:
+    """Turn days-since-Sentinel-1-observation into a freshness label."""
+    if days is None or days != days:  # NaN check
+        return "Missing"
+    if days <= S1_FRESH_MAX_DAYS:
+        return "Fresh"
+    if days <= S1_MODERATE_MAX_DAYS:
         return "Moderate"
     return "Stale"
 
@@ -166,6 +193,40 @@ def _load_soil_lookup(path: Path) -> dict:
     return dict(zip(topsoil_summary["property"], topsoil_summary["average_0_30cm"]))
 
 
+def _load_sentinel1(path: Path) -> pd.DataFrame | None:
+    """
+    Load the daily Sentinel-1 SAR CSV. Returns None (with a warning) if the
+    file does not exist — the S1 join is optional; the feature table can be
+    built without it during cloudy periods or before the first SAR refresh.
+    """
+    if not path.exists():
+        log.warning(
+            "Sentinel-1 daily SAR file not found at %s — "
+            "SAR columns will be omitted from the feature table. "
+            "Run python src/remote_sensing/build_sentinel1_sar_timeseries.py "
+            "followed by aggregate_sentinel1_timeseries.py to create it.",
+            path,
+        )
+        return None
+    try:
+        df = pd.read_csv(path)
+    except Exception as exc:
+        log.warning("Could not read Sentinel-1 SAR file %s: %s — skipping S1 join.", path, exc)
+        return None
+
+    required_s1_cols = ["date", "vv_mean", "vh_mean", "vv_vh_ratio_mean", "orbit_pass", "scene_count"]
+    missing = [c for c in required_s1_cols if c not in df.columns]
+    if missing:
+        log.warning(
+            "Sentinel-1 SAR file %s is missing columns %s — skipping S1 join.",
+            path, missing,
+        )
+        return None
+
+    df["date"] = pd.to_datetime(df["date"])
+    return df.sort_values("date").reset_index(drop=True)
+
+
 def build_feature_table() -> bool:
     """
     Join historical weather/risk, daily Sentinel-2 vegetation, and static
@@ -181,6 +242,7 @@ def build_feature_table() -> bool:
     vegetation_path = config.path("sentinel2_daily_csv")
     soil_path = config.path("soilgrids_csv")
     output_path = config.path("combined_feature_table_csv")
+    sentinel1_path = config.path("sentinel1_daily_csv")
 
     try:
         weather_df = _load_weather_risk(weather_path)
@@ -203,9 +265,15 @@ def build_feature_table() -> bool:
         print(str(exc))
         return False
 
+    sentinel1_df = _load_sentinel1(sentinel1_path)
+
     log.info("Loaded %d historical weather/risk rows from %s", len(weather_df), weather_path)
     log.info("Loaded %d daily vegetation rows from %s", len(vegetation_df), vegetation_path)
     log.info("Loaded soil properties for %d properties from %s", len(soil_lookup), soil_path)
+    if sentinel1_df is not None:
+        log.info("Loaded %d daily Sentinel-1 SAR rows from %s", len(sentinel1_df), sentinel1_path)
+    else:
+        log.info("Sentinel-1 SAR data not available — SAR columns will be omitted.")
 
     # Rename vegetation's "date" to "sentinel2_date" before the join, so the
     # output keeps both: the weather date (the row's own date) and the date
@@ -232,6 +300,38 @@ def build_feature_table() -> bool:
         _freshness_label
     )
 
+    # Optional Sentinel-1 SAR nearest-prior join.
+    # Same direction="backward" logic as S2: never let a row see a SAR
+    # observation taken *after* its weather date.
+    if sentinel1_df is not None:
+        s1_for_merge = (
+            sentinel1_df
+            .rename(columns={
+                "date": "sentinel1_date",
+                "scene_count": "scene_count_s1",
+            })
+        )
+        combined = pd.merge_asof(
+            combined,
+            s1_for_merge,
+            left_on="date",
+            right_on="sentinel1_date",
+            direction="backward",
+        )
+        combined["days_since_sentinel1_observation"] = (
+            combined["date"] - combined["sentinel1_date"]
+        ).dt.days
+        combined["sentinel1_freshness_level"] = (
+            combined["days_since_sentinel1_observation"].apply(_s1_freshness_label)
+        )
+    else:
+        # S1 not available: add placeholder columns so downstream code can
+        # reference the column names without KeyError.
+        for col in SENTINEL1_OUTPUT_COLUMNS:
+            combined[col] = None
+        combined["days_since_sentinel1_observation"] = None
+        combined["sentinel1_freshness_level"] = "Missing"
+
     # Attach the constant (whole-study-area) soil properties to every row.
     for soilgrids_property, output_column in SOIL_OUTPUT_COLUMNS.items():
         combined[output_column] = soil_lookup.get(soilgrids_property)
@@ -249,10 +349,18 @@ def build_feature_table() -> bool:
     vegetation_columns = [c for c in VEGETATION_OUTPUT_COLUMNS if c in combined.columns]
     soil_columns = list(SOIL_OUTPUT_COLUMNS.values())
 
+    sentinel1_columns = [c for c in SENTINEL1_OUTPUT_COLUMNS if c in combined.columns]
+    s1_freshness_columns = [
+        "days_since_sentinel1_observation",
+        "sentinel1_freshness_level",
+    ]
+
     ordered_columns = (
         weather_columns
         + vegetation_columns
         + ["days_since_sentinel2_observation", "vegetation_data_freshness"]
+        + sentinel1_columns
+        + s1_freshness_columns
         + soil_columns
     )
     combined = combined[ordered_columns]

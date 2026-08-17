@@ -48,6 +48,7 @@ NASA_POWER_RAW_PATH = config.path("nasa_power_csv")
 OPEN_METEO_RAW_PATH = config.path("open_meteo_csv")
 SENTINEL2_DAILY_PATH = config.path("sentinel2_daily_csv")
 SENTINEL2_TIMESERIES_PATH = config.path("sentinel2_timeseries_csv")
+SENTINEL1_DAILY_PATH = config.path("sentinel1_daily_csv")
 COMBINED_FEATURE_TABLE_PATH = config.path("combined_feature_table_csv")
 FAO56_WATER_BALANCE_PATH = config.path("fao56_water_balance_csv")
 PHENOLOGY_CALENDAR_PATH = config.path("mango_phenology_calendar_csv")
@@ -203,6 +204,19 @@ def safe_load_vegetation_timeseries_data(path: Path, label: str) -> pd.DataFrame
     except Exception as exc:
         st.warning(f"{label} file could not be loaded ({exc.__class__.__name__}): {exc}")
     return None
+
+
+def safe_load_sentinel1_data(path: Path, label: str) -> pd.DataFrame | None:
+    """Load the daily Sentinel-1 SAR CSV. Returns None if absent or malformed (optional)."""
+    if not path.exists():
+        return None
+    try:
+        df = pd.read_csv(path)
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception:
+        return None
 
 
 def safe_load_combined_feature_data(path: Path, label: str) -> pd.DataFrame | None:
@@ -494,6 +508,7 @@ if SENTINEL2_TIMESERIES_PATH.exists():
     vegetation_timeseries_df = safe_load_vegetation_timeseries_data(
         SENTINEL2_TIMESERIES_PATH, "Sentinel-2 image-level vegetation"
     )
+    sentinel1_df = safe_load_sentinel1_data(SENTINEL1_DAILY_PATH, "Sentinel-1 SAR daily")
 
 if COMBINED_FEATURE_TABLE_PATH.exists():
     combined_feature_df = safe_load_combined_feature_data(
@@ -671,7 +686,7 @@ elif page == "Soil Intelligence":
 # =======================================================================
 
 elif page == "Vegetation Health":
-    render_vegetation_health_page(vegetation_df, vegetation_timeseries_df)
+    render_vegetation_health_page(vegetation_df, vegetation_timeseries_df, sentinel1_df)
 
 
 # =======================================================================

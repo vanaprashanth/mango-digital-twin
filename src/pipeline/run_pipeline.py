@@ -77,6 +77,8 @@ from src.soil import fetch_soilgrids
 from src.risk import historical_risk_engine, open_meteo_risk_engine
 from src.remote_sensing import aggregate_sentinel2_timeseries as sentinel2_aggregation_script
 from src.remote_sensing import build_sentinel2_index_timeseries as sentinel2_timeseries_script
+from src.remote_sensing import aggregate_sentinel1_timeseries as sentinel1_aggregation_script
+from src.remote_sensing import build_sentinel1_sar_timeseries as sentinel1_timeseries_script
 from src.remote_sensing.gee_setup import try_init_earth_engine
 from src.features import build_feature_table as feature_table_script
 from src.phenology import mango_phenology_calendar as phenology_calendar_script
@@ -193,6 +195,12 @@ FRESHNESS_AWARE_STEPS = [
         build_fn=sentinel2_aggregation_script.aggregate_timeseries,
         input_keys=["sentinel2_timeseries_csv"],
         output_keys=["sentinel2_daily_csv"],
+    ),
+    FreshnessAwareStep(
+        name="Sentinel-1 SAR daily aggregation",
+        build_fn=sentinel1_aggregation_script.aggregate_timeseries,
+        input_keys=["sentinel1_sar_timeseries_csv"],
+        output_keys=["sentinel1_daily_csv"],
     ),
     FreshnessAwareStep(
         name="Combined feature table",
@@ -529,6 +537,76 @@ def main():
                 print(
                     f"WARNING: Sentinel-2 timeseries build did not complete "
                     f"({s2_elapsed:.1f}s) — downstream steps will use cached CSV."
+                )
+            print()
+
+    # ------------------------------------------------------------------
+    # Optional Sentinel-1 SAR refresh — reuses the GEE session already
+    # initialized by the Sentinel-2 block above (if --refresh-sentinel2
+    # succeeded). If S2 GEE init was skipped or failed, S1 is also
+    # skipped: we never attempt a second GEE initialization here.
+    # ------------------------------------------------------------------
+    if args.refresh_sentinel2:
+        print("=" * 70)
+        print("Sentinel-1 SAR backscatter refresh (Google Earth Engine)")
+        print("=" * 70)
+
+        # gee_ok / gee_reason were set by the Sentinel-2 block above.
+        # If the variable is not defined (e.g. refresh_sentinel2 is True
+        # but the S2 block was somehow bypassed), treat it as not ready.
+        _s1_gee_ok = "gee_ok" in dir() and gee_ok  # noqa: F821  (set by S2 block)
+        _s1_gee_reason = gee_reason if "gee_reason" in dir() else "GEE was not initialized"  # noqa: F821
+
+        if not _s1_gee_ok:
+            log.warning(
+                "--refresh-sentinel2 (S1): GEE not available — skipping "
+                "Sentinel-1 SAR fetch and reusing cached timeseries CSV. "
+                "Reason: %s", _s1_gee_reason,
+            )
+            print()
+            print(
+                "WARNING: Sentinel-1 SAR refresh skipped — GEE credentials "
+                "not available or initialization failed."
+            )
+            print(f"  Reason: {_s1_gee_reason}")
+            print(
+                "  The pipeline will continue using the cached Sentinel-1 "
+                "SAR timeseries CSV (if one exists)."
+            )
+            print()
+        else:
+            log.info(
+                "--refresh-sentinel2 (S1): GEE ready (%s) — running SAR "
+                "timeseries build.", _s1_gee_reason,
+            )
+            print(f"GEE session reused for Sentinel-1: {_s1_gee_reason}")
+            print()
+            sentinel1_start = time.time()
+            try:
+                # Same assume_ee_initialized=True pattern as S2: GEE is
+                # already initialized, skip the interactive setup check.
+                s1_ok = sentinel1_timeseries_script.build_sar_timeseries(
+                    assume_ee_initialized=True
+                )
+            except Exception as exc:
+                s1_ok = False
+                log.error("Sentinel-1 SAR timeseries build raised: %s", exc)
+                traceback.print_exc()
+            s1_elapsed = time.time() - sentinel1_start
+            if s1_ok:
+                log.info(
+                    "Sentinel-1 SAR timeseries build completed in %.1fs.", s1_elapsed
+                )
+                print(f"Sentinel-1 SAR timeseries refreshed in {s1_elapsed:.1f}s.")
+            else:
+                log.warning(
+                    "Sentinel-1 SAR timeseries build did not complete (%.1fs) — "
+                    "cached CSV will be used by downstream steps.",
+                    s1_elapsed,
+                )
+                print(
+                    f"WARNING: Sentinel-1 SAR timeseries build did not complete "
+                    f"({s1_elapsed:.1f}s) — downstream steps will use cached CSV."
                 )
             print()
 
