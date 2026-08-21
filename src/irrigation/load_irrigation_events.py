@@ -30,6 +30,8 @@ BEHAVIOUR GUARANTEES
 
 from __future__ import annotations
 
+import csv
+import datetime as dt
 from pathlib import Path
 
 import pandas as pd
@@ -125,6 +127,100 @@ def load_irrigation_events(path: "Path | str") -> pd.DataFrame:
     )
 
     return df
+
+
+def append_irrigation_event(
+    path: "Path | str",
+    date: "dt.date | dt.datetime | str",
+    irrigation_mm: float,
+    method: str = "",
+    source: str = "",
+    notes: str = "",
+) -> None:
+    """
+    Append a single irrigation event row to the CSV at `path`.
+
+    This is the only supported write path for the irrigation events CSV.
+    It is intentionally narrow in scope:
+      - Writes ONLY to the given path (callers must pass
+        data/manual/muthukur_irrigation_events.csv — this function does not
+        know or care about any other project file).
+      - Creates the file with the correct header if it does not exist yet.
+      - Appends a single row without reading, rewriting, or reordering any
+        existing rows — existing data can never be corrupted by a call here.
+
+    Validation
+    ----------
+    - `irrigation_mm` must be numeric and >= 0. Raises ValueError otherwise.
+    - `date` must be a valid date (a `date`/`datetime` object, or a string
+      parseable by `pd.to_datetime`). Raises ValueError otherwise.
+
+    Parameters
+    ----------
+    path : Path or str
+        Path to the irrigation events CSV.
+    date : date, datetime, or str
+        Date the irrigation was applied.
+    irrigation_mm : float
+        Amount of irrigation water applied, in mm. Must be >= 0.
+    method : str, optional
+        Irrigation method (e.g. "drip", "sprinkler", "flood", "manual", "other").
+    source : str, optional
+        Who/what recorded this event (e.g. "user_dashboard").
+    notes : str, optional
+        Free-text notes.
+
+    Raises
+    ------
+    ValueError
+        If `date` cannot be parsed, or `irrigation_mm` is not numeric or is
+        negative.
+    """
+    # Validate date
+    try:
+        parsed_date = pd.to_datetime(date)
+        if pd.isna(parsed_date):
+            raise ValueError
+    except Exception as exc:
+        raise ValueError(f"Invalid date: {date!r}") from exc
+
+    # Validate irrigation_mm — must be numeric and >= 0
+    try:
+        mm_value = float(irrigation_mm)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"irrigation_mm must be numeric, got {irrigation_mm!r}") from exc
+    if mm_value < 0:
+        raise ValueError(f"irrigation_mm must be >= 0, got {mm_value}")
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    file_exists = path.exists() and path.stat().st_size > 0
+
+    # Guard against a missing trailing newline on the existing file (e.g. a
+    # hand-edited CSV) — without this, the new row would be concatenated
+    # onto the last existing line instead of appended as its own row.
+    if file_exists:
+        with path.open("rb") as f:
+            f.seek(-1, 2)
+            last_byte = f.read(1)
+        if last_byte != b"\n":
+            with path.open("a", encoding="utf-8") as f:
+                f.write("\n")
+
+    with path.open("a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(_SCHEMA_COLS)
+        writer.writerow(
+            [
+                parsed_date.strftime("%Y-%m-%d"),
+                mm_value,
+                str(method).strip(),
+                str(source).strip(),
+                str(notes).strip(),
+            ]
+        )
 
 
 def validate_irrigation_events(df: pd.DataFrame) -> list[str]:

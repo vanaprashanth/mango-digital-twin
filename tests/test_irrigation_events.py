@@ -13,6 +13,11 @@ Test inventory
 5. compute_water_balance: irrigation_mm and water_input_mm columns present with events
 6. compute_water_balance: root-zone depletion is reduced on irrigation days vs rainfed
 7. Dashboard import: app.sections.irrigation_events imports without error
+8. append_irrigation_event: creates file with header if missing
+9. append_irrigation_event: appends a valid event without corrupting existing rows
+10. append_irrigation_event: rejects negative irrigation_mm and invalid dates
+11. append_irrigation_event: preserves expected CSV columns
+12. append_irrigation_event: multiple events append correctly
 """
 
 from __future__ import annotations
@@ -30,7 +35,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.irrigation.load_irrigation_events import load_irrigation_events
+from src.irrigation.load_irrigation_events import (
+    append_irrigation_event,
+    load_irrigation_events,
+)
 from src.water_balance.fao56_water_balance import compute_water_balance, compute_et0
 
 
@@ -231,3 +239,132 @@ def test_dashboard_import_succeeds():
     assert hasattr(mod, "render_irrigation_events_page"), (
         "render_irrigation_events_page function not found in module"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 8 — append_irrigation_event: creates file with header if missing
+# ---------------------------------------------------------------------------
+
+def test_append_creates_file_if_missing(tmp_path):
+    path = tmp_path / "new_events.csv"
+    assert not path.exists()
+
+    append_irrigation_event(
+        path=path,
+        date="2025-05-01",
+        irrigation_mm=20.0,
+        method="drip",
+        source="user_dashboard",
+        notes="first event",
+    )
+
+    assert path.exists()
+    df = load_irrigation_events(path)
+    assert len(df) == 1
+    assert df.iloc[0]["irrigation_mm"] == pytest.approx(20.0)
+    assert df.iloc[0]["method"] == "drip"
+    assert df.iloc[0]["source"] == "user_dashboard"
+
+
+# ---------------------------------------------------------------------------
+# Test 9 — append_irrigation_event: appends a valid event without corrupting
+# existing rows
+# ---------------------------------------------------------------------------
+
+def test_append_valid_event_preserves_existing_rows(tmp_path):
+    csv_content = """
+    date,irrigation_mm,method,source,notes
+    2025-03-10,25.0,drip,farmer,valid row
+    """
+    path = _write_csv(tmp_path, csv_content)
+
+    append_irrigation_event(
+        path=path,
+        date="2025-05-01",
+        irrigation_mm=15.0,
+        method="sprinkler",
+        source="user_dashboard",
+        notes="second event",
+    )
+
+    df = load_irrigation_events(path)
+    assert len(df) == 2
+    assert df.iloc[0]["date"] == pd.Timestamp("2025-03-10")
+    assert df.iloc[0]["irrigation_mm"] == pytest.approx(25.0)
+    assert df.iloc[1]["date"] == pd.Timestamp("2025-05-01")
+    assert df.iloc[1]["irrigation_mm"] == pytest.approx(15.0)
+    assert df.iloc[1]["source"] == "user_dashboard"
+
+
+# ---------------------------------------------------------------------------
+# Test 10 — append_irrigation_event: rejects negative irrigation_mm
+# ---------------------------------------------------------------------------
+
+def test_append_rejects_negative_irrigation_mm(tmp_path):
+    path = tmp_path / "events.csv"
+
+    with pytest.raises(ValueError):
+        append_irrigation_event(
+            path=path,
+            date="2025-05-01",
+            irrigation_mm=-5.0,
+            method="drip",
+            source="user_dashboard",
+            notes="invalid",
+        )
+
+    # No file should be created (or if created earlier, must remain unwritten)
+    assert not path.exists()
+
+
+def test_append_rejects_invalid_date(tmp_path):
+    path = tmp_path / "events.csv"
+
+    with pytest.raises(ValueError):
+        append_irrigation_event(
+            path=path,
+            date="not-a-date",
+            irrigation_mm=10.0,
+            method="drip",
+            source="user_dashboard",
+            notes="invalid date",
+        )
+
+    assert not path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Test 11 — append_irrigation_event: preserves expected CSV columns
+# ---------------------------------------------------------------------------
+
+def test_append_preserves_expected_columns(tmp_path):
+    path = tmp_path / "events.csv"
+
+    append_irrigation_event(
+        path=path,
+        date="2025-05-01",
+        irrigation_mm=10.0,
+        method="manual",
+        source="user_dashboard",
+        notes="",
+    )
+
+    header = path.read_text(encoding="utf-8").splitlines()[0]
+    assert header == "date,irrigation_mm,method,source,notes"
+
+
+# ---------------------------------------------------------------------------
+# Test 12 — append_irrigation_event: multiple events append correctly
+# ---------------------------------------------------------------------------
+
+def test_append_multiple_events_accumulate(tmp_path):
+    path = tmp_path / "events.csv"
+
+    append_irrigation_event(path=path, date="2025-05-01", irrigation_mm=10.0, method="drip", source="user_dashboard", notes="e1")
+    append_irrigation_event(path=path, date="2025-05-05", irrigation_mm=20.0, method="flood", source="user_dashboard", notes="e2")
+    append_irrigation_event(path=path, date="2025-05-10", irrigation_mm=30.0, method="sprinkler", source="user_dashboard", notes="e3")
+
+    df = load_irrigation_events(path)
+    assert len(df) == 3
+    assert list(df["irrigation_mm"]) == pytest.approx([10.0, 20.0, 30.0])
+    assert df["source"].eq("user_dashboard").all()

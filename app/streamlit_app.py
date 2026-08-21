@@ -793,7 +793,7 @@ elif page == "Irrigation Advisory":
 # =======================================================================
 
 elif page == "Irrigation Events":
-    render_irrigation_events_page(irrigation_events_df)
+    render_irrigation_events_page(irrigation_events_df, csv_path=IRRIGATION_EVENTS_PATH)
 
 
 # =======================================================================

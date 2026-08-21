@@ -1,27 +1,148 @@
 from __future__ import annotations
 
 import datetime as dt
+from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 from app.sections.freshness import show_freshness_indicator
+from src.irrigation.load_irrigation_events import append_irrigation_event
+
+_METHOD_OPTIONS = ["drip", "sprinkler", "flood", "manual", "other"]
 
 
-def render_irrigation_events_page(irrigation_df: pd.DataFrame | None) -> None:
-    """Render the Irrigation Events read-only dashboard page."""
+def _render_add_event_form(csv_path: "Path | str") -> bool:
+    """
+    Render the "Add Irrigation Event" form and handle submission.
+
+    Writes ONLY to `csv_path` (expected to be
+    data/manual/muthukur_irrigation_events.csv) via append_irrigation_event.
+    Never touches data/raw, data/processed, or any other file.
+
+    Returns True if an event was successfully saved this run (so the caller
+    can refresh/reload the irrigation events data), False otherwise.
+    """
+    st.subheader("Record a New Irrigation Event")
+
+    with st.form("add_irrigation_event_form", clear_on_submit=True):
+        form_col1, form_col2, form_col3 = st.columns(3)
+
+        with form_col1:
+            event_date = st.date_input(
+                "Date",
+                value=dt.date.today(),
+                help="Date the irrigation was applied.",
+            )
+
+        with form_col2:
+            irrigation_mm = st.number_input(
+                "Irrigation amount (mm)",
+                min_value=0.0,
+                max_value=500.0,
+                value=20.0,
+                step=5.0,
+                help="Amount of water applied, in mm. Must be zero or greater.",
+            )
+
+        with form_col3:
+            method = st.selectbox(
+                "Method",
+                options=_METHOD_OPTIONS,
+                index=0,
+                help="How the irrigation was applied.",
+            )
+
+        notes = st.text_area(
+            "Notes (optional)",
+            value="",
+            max_chars=300,
+            help="Any additional context about this irrigation event.",
+        )
+
+        submitted = st.form_submit_button("Save irrigation event")
+
+    if not submitted:
+        return False
+
+    # ── Validation ───────────────────────────────────────────────────────
+    if event_date is None:
+        st.error("A valid date is required.")
+        return False
+
+    try:
+        mm_value = float(irrigation_mm)
+    except (TypeError, ValueError):
+        st.error("Irrigation amount must be numeric.")
+        return False
+
+    if mm_value < 0:
+        st.error("Irrigation amount must be zero or greater.")
+        return False
+
+    # ── Write (append-only, single file) ────────────────────────────────
+    try:
+        append_irrigation_event(
+            path=csv_path,
+            date=event_date,
+            irrigation_mm=mm_value,
+            method=method,
+            source="user_dashboard",
+            notes=notes,
+        )
+    except ValueError as exc:
+        st.error(f"Could not save irrigation event: {exc}")
+        return False
+    except Exception as exc:
+        st.error(f"Unexpected error saving irrigation event: {exc}")
+        return False
+
+    st.success(
+        f"✅ Saved irrigation event: {event_date.strftime('%Y-%m-%d')}, "
+        f"{mm_value:.1f} mm ({method})."
+    )
+    st.warning(
+        "⚠️ This records the irrigation event only. The FAO-56 water balance and "
+        "irrigation advisory will **not** reflect it until the pipeline is rerun "
+        "(`python main.py --skip-fetch`)."
+    )
+    st.caption(
+        "This records the irrigation event. It does not automatically recompute "
+        "the water balance until the pipeline is rerun."
+    )
+    return True
+
+
+def render_irrigation_events_page(
+    irrigation_df: pd.DataFrame | None,
+    csv_path: "Path | str | None" = None,
+) -> None:
+    """Render the Irrigation Events dashboard page: add-event form + read-only summary."""
 
     st.title("Irrigation Events")
     show_freshness_indicator(label="Irrigation events", staleness_warning_days=0)
 
-    st.info(
-        "This page is **read-only**. To record irrigation events, edit the CSV file directly:\n\n"
-        "`data/manual/muthukur_irrigation_events.csv`\n\n"
-        "Columns: `date` (YYYY-MM-DD), `irrigation_mm` (mm applied), "
-        "`method` (optional), `source` (optional), `notes` (optional).\n\n"
-        "After editing, re-run `python main.py --skip-fetch` to update the FAO-56 "
-        "water balance and irrigation advisory."
-    )
+    if csv_path is not None:
+        saved = _render_add_event_form(csv_path)
+        if saved:
+            # Reload so the summary/table/chart below reflect the new event
+            # immediately, without requiring a manual page refresh.
+            from src.irrigation.load_irrigation_events import load_irrigation_events
+
+            irrigation_df = load_irrigation_events(csv_path)
+            if irrigation_df.empty:
+                irrigation_df = None
+        st.divider()
+    else:
+        st.info(
+            "Adding events from this page is unavailable right now (CSV path not "
+            "configured). You can still edit the CSV file directly:\n\n"
+            "`data/manual/muthukur_irrigation_events.csv`\n\n"
+            "Columns: `date` (YYYY-MM-DD), `irrigation_mm` (mm applied), "
+            "`method` (optional), `source` (optional), `notes` (optional).\n\n"
+            "After editing, re-run `python main.py --skip-fetch` to update the FAO-56 "
+            "water balance and irrigation advisory."
+        )
 
     if irrigation_df is None or irrigation_df.empty:
         st.warning("No irrigation events recorded yet.")
@@ -136,5 +257,7 @@ def render_irrigation_events_page(irrigation_df: pd.DataFrame | None) -> None:
         "field meter or flow measurement. Each row represents the best available "
         "estimate of water applied on that date. The FAO-56 water balance treats "
         "irrigation as an additive input alongside rainfall (FAO-56 eq 85), "
-        "reducing root-zone depletion on recorded event days."
+        "reducing root-zone depletion on recorded event days. This records the "
+        "irrigation event. It does not automatically recompute the water balance "
+        "until the pipeline is rerun."
     )
