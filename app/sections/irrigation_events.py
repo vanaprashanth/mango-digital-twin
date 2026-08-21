@@ -12,6 +12,37 @@ from src.irrigation.load_irrigation_events import append_irrigation_event
 _METHOD_OPTIONS = ["drip", "sprinkler", "flood", "manual", "other"]
 
 
+def _render_persistence_status() -> None:
+    """
+    Show a small note about how irrigation events are currently persisted.
+
+    Reads the configured mode via src.irrigation.persistence — this is a
+    read-only status display, it does not write anything or contact any
+    external service. If config/persistence cannot be loaded for any
+    reason, this fails silently (the form itself must keep working
+    regardless).
+    """
+    try:
+        from src.irrigation.persistence import (
+            get_irrigation_persistence_mode,
+            persistence_mode_label,
+        )
+        from src.utils.config import get_config
+
+        mode = get_irrigation_persistence_mode(get_config())
+        label = persistence_mode_label(mode)
+    except Exception:
+        mode, label = "local_csv", "Local CSV"
+
+    st.caption(f"📌 Current persistence mode: **{label}**")
+
+    if mode == "local_csv":
+        st.warning(
+            "⚠️ On Streamlit Cloud, local CSV writes may not persist after app "
+            "restart unless GitHub-backed or database persistence is configured."
+        )
+
+
 def _render_add_event_form(csv_path: "Path | str") -> bool:
     """
     Render the "Add Irrigation Event" form and handle submission.
@@ -121,6 +152,7 @@ def render_irrigation_events_page(
 
     st.title("Irrigation Events")
     show_freshness_indicator(label="Irrigation events", staleness_warning_days=0)
+    _render_persistence_status()
 
     if csv_path is not None:
         saved = _render_add_event_form(csv_path)

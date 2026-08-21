@@ -131,6 +131,28 @@ paths:
   pipeline_run_metadata_json: "data/processed/pipeline_run_metadata.json"
   irrigation_events_csv: "data/manual/muthukur_irrigation_events.csv"
 
+# Irrigation event persistence mode. Controls how the "Record a New
+# Irrigation Event" dashboard form saves data. This is a forward-looking
+# flag only — as of now, only "local_csv" is implemented.
+#
+# Supported values:
+#   local_csv  (default, current behavior) — appends directly to
+#              data/manual/muthukur_irrigation_events.csv on the local
+#              filesystem. Simple and fully auditable via git, but on
+#              ephemeral hosting (e.g. Streamlit Community Cloud) writes
+#              may not survive an app restart or redeploy.
+#   github_csv (planned, NOT implemented) — would commit new irrigation
+#              events directly to this repository via the GitHub API,
+#              giving durable, versioned storage. Requires GITHUB_TOKEN
+#              and GITHUB_REPO to be configured; disabled unless both are
+#              present. No GitHub calls are made yet regardless of this
+#              setting.
+#   database   (planned, NOT implemented) — would write to an external
+#              database (e.g. Postgres/SQLite) for durable, queryable,
+#              multi-user storage. Recommended long-term production
+#              approach.
+irrigation_persistence_mode: "local_csv"
+
 risk_thresholds:
   classification:
     high: 0.70

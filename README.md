@@ -711,13 +711,30 @@ When the CSV is absent or empty, all three scripts fall back to rainfed-only dep
 
 **Advisory integration:** `src/advisory/forecast_aware_irrigation.py` loads the irrigation CSV and adds `last_irrigation_date` and `days_since_last_irrigation` to the advisory output record. If irrigation was recorded within 2 days, the advisory reason note mentions this so the recommendation is contextualised.
 
-**Dashboard:** The **Irrigation Events** page (sidebar) shows total events, total mm applied, latest event date, and a chart and table of all recorded events. The **Water Balance** page shows a rainfall + irrigation + total-water-input chart when events are present.
+**Dashboard:** The **Irrigation Events** page (sidebar) includes a form ("Record a New Irrigation Event") for adding new rows directly from the UI — date, amount (mm), method, and optional notes — as well as total events, total mm applied, latest event date, and a chart and table of all recorded events. The **Water Balance** page shows a rainfall + irrigation + total-water-input chart when events are present.
 
-**To update events:** Edit `data/manual/muthukur_irrigation_events.csv` directly (not via the UI), then re-run `python main.py --skip-fetch` to regenerate the FAO-56 outputs and advisory. Do not stage the `data/raw` or `data/processed` directories when committing new irrigation records.
+**To update events:** Use the form on the Irrigation Events dashboard page, or edit `data/manual/muthukur_irrigation_events.csv` directly. Either way, re-run `python main.py --skip-fetch` afterward to regenerate the FAO-56 outputs and advisory — adding an event via the form only appends the row; it does not recompute the water balance. Do not stage the `data/raw` or `data/processed` directories when committing new irrigation records.
 
 ---
 
-## 15. What-if Simulator
+## 15. Irrigation Event Persistence
+
+New irrigation events entered through the dashboard form are appended to `data/manual/muthukur_irrigation_events.csv`. How durable that write is depends on where the app is running, so this section documents the current behavior and the intended upgrade path.
+
+**Local mode (current, implemented):** When run locally (or on any host with a persistent filesystem), the form writes directly to `data/manual/muthukur_irrigation_events.csv`. Because this file lives in the git repository, every recorded event is auditable through normal git history once committed — there is no hidden database or opaque storage layer.
+
+**Streamlit Cloud caveat:** Streamlit Community Cloud containers can restart or redeploy at any time (a new commit push, inactivity, a platform restart), and the filesystem is not guaranteed to persist across that boundary. A form submission that only reaches the local CSV on disk — without also being committed to git — may be lost on the next restart. This is a platform limitation, not a bug in the form itself.
+
+**Recommended production approaches (not yet implemented):**
+
+- **GitHub-backed persistence (`github_csv`)** — instead of (or in addition to) writing to the local filesystem, the app would commit each new event directly to this repository via the GitHub API. This keeps the simple, auditable CSV format while surviving redeploys, since the data lives in git rather than container-local disk.
+- **Database persistence (`database`)** — for higher event volume or multi-user editing, irrigation events would move to an external database (e.g. Postgres/SQLite) offering durable, queryable, concurrent-safe storage.
+
+**Current status:** the project remains **CSV-first and auditable** — `irrigation_persistence_mode` in `configs/config.yaml` defaults to `"local_csv"`, and no GitHub or database code path is active yet. `src/irrigation/persistence.py` provides `get_irrigation_persistence_mode()`, `is_github_persistence_enabled()`, and `explain_persistence_mode()` as a status/planning layer only: it reports which mode is configured and whether GitHub credentials (`GITHUB_TOKEN` + `GITHUB_REPO`) are present, but makes no GitHub API calls and requires no credentials to run. The Irrigation Events dashboard page displays the active mode and, when in `local_csv` mode, a warning about Streamlit Cloud write durability.
+
+---
+
+## 16. What-if Simulator
 
 The what-if simulator allows the user to test changes in:
 
@@ -741,7 +758,7 @@ This simulates wet and humid disease-friendly conditions.
 
 ---
 
-## 16. Current Project Status
+## 17. Current Project Status
 
 Completed:
 
@@ -791,7 +808,7 @@ Next planned (in priority order, see `ROADMAP.md` and `MILESTONE_SUMMARY.md` for
 
 ---
 
-## 17. Future Work
+## 18. Future Work
 
 Planned future upgrades:
 
@@ -812,7 +829,7 @@ See `MILESTONE_SUMMARY.md` for a beginner-friendly snapshot of what is and isn't
 
 ---
 
-## 18. Research Direction
+## 19. Research Direction
 
 This project supports the idea of a sensor-free digital twin for mango orchard risk intelligence.
 
@@ -830,7 +847,7 @@ A sensor-free, phenology-aware, Bayesian digital twin for mango orchard risk for
 
 ---
 
-## 19. Streamlit Community Cloud Deployment
+## 20. Streamlit Community Cloud Deployment
 
 ### Entry point
 
@@ -876,7 +893,7 @@ cached data or a "file not found" message — all other pages work normally.
 
 ---
 
-## 20. Disclaimer
+## 21. Disclaimer
 
 This project is a research and prototype system. The risk scores are not final agronomic recommendations. Field validation, expert calibration, and local farmer observations are required before operational use.
 
