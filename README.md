@@ -719,18 +719,31 @@ When the CSV is absent or empty, all three scripts fall back to rainfed-only dep
 
 ## 15. Irrigation Event Persistence
 
-New irrigation events entered through the dashboard form are appended to `data/manual/muthukur_irrigation_events.csv`. How durable that write is depends on where the app is running, so this section documents the current behavior and the intended upgrade path.
+New irrigation events entered through the dashboard form are saved via one of two supported persistence modes, controlled by `irrigation_persistence_mode` in `configs/config.yaml`. How durable a save is depends on the mode and where the app is running, so this section documents both.
 
-**Local mode (current, implemented):** When run locally (or on any host with a persistent filesystem), the form writes directly to `data/manual/muthukur_irrigation_events.csv`. Because this file lives in the git repository, every recorded event is auditable through normal git history once committed — there is no hidden database or opaque storage layer.
+**`local_csv` (default):** The form appends directly to `data/manual/muthukur_irrigation_events.csv` on the local filesystem. Because this file lives in the git repository, every recorded event is auditable through normal git history once committed — there is no hidden database or opaque storage layer. This is the default and requires no configuration.
 
-**Streamlit Cloud caveat:** Streamlit Community Cloud containers can restart or redeploy at any time (a new commit push, inactivity, a platform restart), and the filesystem is not guaranteed to persist across that boundary. A form submission that only reaches the local CSV on disk — without also being committed to git — may be lost on the next restart. This is a platform limitation, not a bug in the form itself.
+- **Streamlit Cloud caveat:** Streamlit Community Cloud containers can restart or redeploy at any time (a new commit push, inactivity, a platform restart), and the filesystem is not guaranteed to persist across that boundary. A form submission that only reaches the local CSV on disk — without also being committed to git — may be lost on the next restart. This is a platform limitation, not a bug in the form itself.
 
-**Recommended production approaches (not yet implemented):**
+**`github_csv` (optional):** Instead of writing to the local filesystem, the form commits each new event directly to this repository's CSV file via the GitHub Contents API (`src/irrigation/github_persistence.py`), so the event lands in git history immediately and survives any container restart or redeploy. This mode is **disabled by default** and only activates when both credentials below are present — there is no silent fallback that could lose data.
 
-- **GitHub-backed persistence (`github_csv`)** — instead of (or in addition to) writing to the local filesystem, the app would commit each new event directly to this repository via the GitHub API. This keeps the simple, auditable CSV format while surviving redeploys, since the data lives in git rather than container-local disk.
-- **Database persistence (`database`)** — for higher event volume or multi-user editing, irrigation events would move to an external database (e.g. Postgres/SQLite) offering durable, queryable, concurrent-safe storage.
+Required Streamlit secrets / environment variables for `github_csv` mode:
 
-**Current status:** the project remains **CSV-first and auditable** — `irrigation_persistence_mode` in `configs/config.yaml` defaults to `"local_csv"`, and no GitHub or database code path is active yet. `src/irrigation/persistence.py` provides `get_irrigation_persistence_mode()`, `is_github_persistence_enabled()`, and `explain_persistence_mode()` as a status/planning layer only: it reports which mode is configured and whether GitHub credentials (`GITHUB_TOKEN` + `GITHUB_REPO`) are present, but makes no GitHub API calls and requires no credentials to run. The Irrigation Events dashboard page displays the active mode and, when in `local_csv` mode, a warning about Streamlit Cloud write durability.
+| Variable | Required | Description |
+|---|---|---|
+| `GITHUB_TOKEN` | Yes | A GitHub personal access token with **repo contents write** permission only. Do not use a token with broader scopes than necessary. |
+| `GITHUB_REPO` | Yes | Target repository in `<owner>/<repo>` format, e.g. `vanaprashanth/mango-digital-twin`. |
+| `GITHUB_BRANCH` | No | Target branch. Defaults to `master` if not set. |
+
+**Never commit these values to `configs/config.yaml`, the README, or any file in this repository.** Set them as real environment variables (locally) or as Streamlit Cloud secrets (`.streamlit/secrets.toml`, which is gitignored, or the app's Secrets settings in the Streamlit Cloud dashboard). The token is read only at the moment it's needed to call the GitHub API and is never logged, printed, or displayed anywhere in the app.
+
+If `irrigation_persistence_mode` is set to `github_csv` but `GITHUB_TOKEN` or `GITHUB_REPO` is missing, the dashboard shows a clear warning and **blocks the save** rather than silently discarding the event or falling back to a mode the user didn't choose.
+
+After a successful `github_csv` save, the dashboard shows a link to the GitHub commit and a note that the running app may need a data reload or redeploy to reflect the new commit locally, and that the FAO-56 water balance still requires `python main.py --skip-fetch` to pick up the new event.
+
+**Future option — `database`:** for higher event volume or multi-user editing, irrigation events could move to an external database (e.g. Postgres/SQLite) offering durable, queryable, concurrent-safe storage. This mode is **not implemented** — `irrigation_persistence_mode: "database"` is accepted by the config schema as a placeholder for future work only.
+
+**Status/planning layer:** `src/irrigation/persistence.py` provides `get_irrigation_persistence_mode()`, `is_github_persistence_enabled()`, `get_github_persistence_settings()`, and `explain_persistence_mode()`. `get_github_persistence_settings()` reports whether GitHub persistence is enabled and which repo/branch are targeted, but deliberately never returns the token itself (only a `token_present` boolean) — safe to display anywhere. The actual GitHub write path lives in `src/irrigation/github_persistence.py` and is only invoked when `github_csv` mode is both selected and fully configured.
 
 ---
 

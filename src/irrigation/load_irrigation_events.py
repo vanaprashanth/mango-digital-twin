@@ -129,6 +129,49 @@ def load_irrigation_events(path: "Path | str") -> pd.DataFrame:
     return df
 
 
+def validate_new_event(
+    date: "dt.date | dt.datetime | str",
+    irrigation_mm: float,
+) -> "tuple[pd.Timestamp, float]":
+    """
+    Shared validation for a single new irrigation event, used by both the
+    local CSV append path (append_irrigation_event, below) and the optional
+    GitHub-backed writeback path (src/irrigation/github_persistence.py), so
+    both persistence modes reject the same invalid input in the same way.
+
+    Validation
+    ----------
+    - `date` must be a valid date (a `date`/`datetime` object, or a string
+      parseable by `pd.to_datetime`).
+    - `irrigation_mm` must be numeric and >= 0.
+
+    Returns
+    -------
+    (parsed_date, mm_value) : (pd.Timestamp, float)
+
+    Raises
+    ------
+    ValueError
+        If `date` cannot be parsed, or `irrigation_mm` is not numeric or is
+        negative.
+    """
+    try:
+        parsed_date = pd.to_datetime(date)
+        if pd.isna(parsed_date):
+            raise ValueError
+    except Exception as exc:
+        raise ValueError(f"Invalid date: {date!r}") from exc
+
+    try:
+        mm_value = float(irrigation_mm)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"irrigation_mm must be numeric, got {irrigation_mm!r}") from exc
+    if mm_value < 0:
+        raise ValueError(f"irrigation_mm must be >= 0, got {mm_value}")
+
+    return parsed_date, mm_value
+
+
 def append_irrigation_event(
     path: "Path | str",
     date: "dt.date | dt.datetime | str",
@@ -176,21 +219,7 @@ def append_irrigation_event(
         If `date` cannot be parsed, or `irrigation_mm` is not numeric or is
         negative.
     """
-    # Validate date
-    try:
-        parsed_date = pd.to_datetime(date)
-        if pd.isna(parsed_date):
-            raise ValueError
-    except Exception as exc:
-        raise ValueError(f"Invalid date: {date!r}") from exc
-
-    # Validate irrigation_mm — must be numeric and >= 0
-    try:
-        mm_value = float(irrigation_mm)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"irrigation_mm must be numeric, got {irrigation_mm!r}") from exc
-    if mm_value < 0:
-        raise ValueError(f"irrigation_mm must be >= 0, got {mm_value}")
+    parsed_date, mm_value = validate_new_event(date, irrigation_mm)
 
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

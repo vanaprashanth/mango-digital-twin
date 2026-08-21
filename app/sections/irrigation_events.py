@@ -24,15 +24,18 @@ def _render_persistence_status() -> None:
     """
     try:
         from src.irrigation.persistence import (
+            get_github_persistence_settings,
             get_irrigation_persistence_mode,
             persistence_mode_label,
         )
         from src.utils.config import get_config
 
-        mode = get_irrigation_persistence_mode(get_config())
+        _cfg = get_config()
+        mode = get_irrigation_persistence_mode(_cfg)
         label = persistence_mode_label(mode)
+        github_settings = get_github_persistence_settings(_cfg)
     except Exception:
-        mode, label = "local_csv", "Local CSV"
+        mode, label, github_settings = "local_csv", "Local CSV", {"enabled": False}
 
     st.caption(f"📌 Current persistence mode: **{label}**")
 
@@ -41,6 +44,126 @@ def _render_persistence_status() -> None:
             "⚠️ On Streamlit Cloud, local CSV writes may not persist after app "
             "restart unless GitHub-backed or database persistence is configured."
         )
+    elif mode == "github_csv" and not github_settings.get("enabled"):
+        st.warning(
+            "⚠️ GitHub CSV persistence is selected but not fully configured "
+            "(`GITHUB_TOKEN`/`GITHUB_REPO` missing). New events cannot be saved "
+            "until this is fixed — the form will block saves rather than lose data."
+        )
+
+
+def _handle_local_save(
+    csv_path: "Path | str",
+    event_date,
+    mm_value: float,
+    method: str,
+    notes: str,
+) -> bool:
+    """Save via the local CSV append path (unchanged local_csv behavior)."""
+    try:
+        append_irrigation_event(
+            path=csv_path,
+            date=event_date,
+            irrigation_mm=mm_value,
+            method=method,
+            source="user_dashboard",
+            notes=notes,
+        )
+    except ValueError as exc:
+        st.error(f"Could not save irrigation event: {exc}")
+        return False
+    except Exception as exc:
+        st.error(f"Unexpected error saving irrigation event: {exc}")
+        return False
+
+    st.success(
+        f"✅ Saved irrigation event: {event_date.strftime('%Y-%m-%d')}, "
+        f"{mm_value:.1f} mm ({method})."
+    )
+    st.warning(
+        "⚠️ This records the irrigation event only. The FAO-56 water balance and "
+        "irrigation advisory will **not** reflect it until the pipeline is rerun "
+        "(`python main.py --skip-fetch`)."
+    )
+    st.caption(
+        "This records the irrigation event. It does not automatically recompute "
+        "the water balance until the pipeline is rerun."
+    )
+    return True
+
+
+def _handle_github_save(
+    event_date,
+    mm_value: float,
+    method: str,
+    notes: str,
+    github_settings: dict,
+) -> bool:
+    """
+    Save via GitHub-backed persistence (github_csv mode). Only called when
+    github_settings["enabled"] is True (mode selected AND repo/token present).
+
+    Never displays the token. On any failure, no data is written locally or
+    remotely for this submission — the user sees a clear error rather than
+    silently losing the event.
+    """
+    try:
+        from src.irrigation.github_persistence import append_irrigation_event_github
+        from src.irrigation.persistence import get_github_token
+        from src.utils.config import get_config
+
+        token = get_github_token(get_config())
+    except Exception as exc:
+        st.error(f"Could not load GitHub persistence module: {type(exc).__name__}")
+        return False
+
+    if not token:
+        # Shouldn't happen if github_settings["enabled"] is True, but guard anyway.
+        st.warning(
+            "⚠️ GitHub CSV persistence is selected but GITHUB_TOKEN/GITHUB_REPO "
+            "is not configured. To avoid silently losing this event, the save "
+            "has been blocked."
+        )
+        return False
+
+    event = {
+        "date": event_date,
+        "irrigation_mm": mm_value,
+        "method": method,
+        "source": "user_dashboard",
+        "notes": notes,
+    }
+
+    try:
+        result = append_irrigation_event_github(
+            repo=github_settings["repo"],
+            branch=github_settings["branch"],
+            token=token,
+            csv_path=github_settings["csv_path"],
+            event=event,
+        )
+    except ValueError as exc:
+        st.error(f"Could not save irrigation event: {exc}")
+        return False
+    except Exception:
+        st.error("Unexpected error while saving to GitHub. No data was written.")
+        return False
+
+    if result.get("success"):
+        st.success(f"✅ {result.get('message', 'Saved to GitHub.')}")
+        if result.get("commit_url"):
+            st.markdown(f"[View commit on GitHub]({result['commit_url']})")
+        st.info(
+            "ℹ️ This event was committed to GitHub, not written to the local "
+            "filesystem. The running dashboard may need a data reload or "
+            "redeploy to reflect this new commit, and the FAO-56 water balance "
+            "will not include it until the pipeline is rerun."
+        )
+        return True
+
+    st.error(f"❌ GitHub save failed: {result.get('message', 'Unknown error.')}")
+    st.caption("No data was written locally or to GitHub for this submission.")
+    return False
 
 
 def _render_add_event_form(csv_path: "Path | str") -> bool:
@@ -111,37 +234,36 @@ def _render_add_event_form(csv_path: "Path | str") -> bool:
         st.error("Irrigation amount must be zero or greater.")
         return False
 
-    # ── Write (append-only, single file) ────────────────────────────────
+    # ── Determine persistence mode ──────────────────────────────────────
     try:
-        append_irrigation_event(
-            path=csv_path,
-            date=event_date,
-            irrigation_mm=mm_value,
-            method=method,
-            source="user_dashboard",
-            notes=notes,
+        from src.irrigation.persistence import (
+            get_github_persistence_settings,
+            get_irrigation_persistence_mode,
         )
-    except ValueError as exc:
-        st.error(f"Could not save irrigation event: {exc}")
-        return False
-    except Exception as exc:
-        st.error(f"Unexpected error saving irrigation event: {exc}")
+        from src.utils.config import get_config
+
+        _cfg = get_config()
+        mode = get_irrigation_persistence_mode(_cfg)
+        github_settings = get_github_persistence_settings(_cfg)
+    except Exception:
+        mode, github_settings = "local_csv", {"enabled": False}
+
+    # ── Write (append-only, single file — local CSV or GitHub commit) ───
+    if mode == "github_csv":
+        if github_settings.get("enabled"):
+            return _handle_github_save(event_date, mm_value, method, notes, github_settings)
+
+        st.warning(
+            "⚠️ GitHub CSV persistence is selected but GITHUB_TOKEN/GITHUB_REPO "
+            "is not configured. To avoid silently losing this event, the save "
+            "has been blocked. Configure `GITHUB_TOKEN`, `GITHUB_REPO`, and "
+            "optionally `GITHUB_BRANCH` as environment variables or Streamlit "
+            "secrets, or set `irrigation_persistence_mode: \"local_csv\"` in "
+            "`configs/config.yaml` to use local storage instead."
+        )
         return False
 
-    st.success(
-        f"✅ Saved irrigation event: {event_date.strftime('%Y-%m-%d')}, "
-        f"{mm_value:.1f} mm ({method})."
-    )
-    st.warning(
-        "⚠️ This records the irrigation event only. The FAO-56 water balance and "
-        "irrigation advisory will **not** reflect it until the pipeline is rerun "
-        "(`python main.py --skip-fetch`)."
-    )
-    st.caption(
-        "This records the irrigation event. It does not automatically recompute "
-        "the water balance until the pipeline is rerun."
-    )
-    return True
+    return _handle_local_save(csv_path, event_date, mm_value, method, notes)
 
 
 def render_irrigation_events_page(
