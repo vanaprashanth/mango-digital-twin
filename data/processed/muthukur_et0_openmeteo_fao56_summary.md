@@ -1,17 +1,28 @@
 # ET0 Comparison: Open-Meteo vs FAO-56 Penman-Monteith
 
-*Generated: 2026-09-10T07:28:45*
+*Generated: 2026-09-11T07:26:52*
 
-## Result: No overlapping dates
+## Summary
 
-The Open-Meteo ET0 dataset covers **2026-09-03 to 2026-09-16** and the FAO-56 computed
-ET0 dataset covers **2025-01-01 to 2026-08-28**. These date ranges do not overlap, so
-no day-by-day comparison is possible with current cached data.
+| Metric | Value |
+|--------|-------|
+| Matched days | 3 |
+| Date range | 2026-09-04 to 2026-09-06 |
+| Open-Meteo date coverage | 2026-09-04 to 2026-09-17 |
+| FAO-56 date coverage | 2025-01-01 to 2026-09-06 |
+| Mean Open-Meteo ET0 | 5.820 mm/day |
+| Mean FAO-56 ET0 | 4.785 mm/day |
+| Mean difference (Open-Meteo − FAO-56) | 1.035 mm/day |
+| Mean absolute difference | 1.035 mm/day |
+| Max absolute difference | 1.350 mm/day |
+| Pearson correlation | 0.945 |
 
-**What this means:** Open-Meteo data is fetched for recent and forecast
-dates; the FAO-56 water balance is built from NASA POWER historical weather.
-After a full `python main.py` run that fetches both sources and they cover
-overlapping dates, this comparison will populate automatically.
+## Interpretation
+
+A positive mean difference means Open-Meteo estimates higher ET0 than
+FAO-56 Penman-Monteith (computed from NASA POWER weather) on average, and
+vice versa. Differences < 0.5 mm/day are within normal inter-source
+variability.
 
 ## Limitations
 
