@@ -1,0 +1,150 @@
+{
+  "model_type": "RandomForestClassifier",
+  "label_type": "surrogate_rule_based",
+  "target": "target_irrigation_priority",
+  "train_rows": 507,
+  "test_rows": 127,
+  "train_date_range": [
+    "2025-01-01",
+    "2026-05-22"
+  ],
+  "test_date_range": [
+    "2026-05-23",
+    "2026-09-26"
+  ],
+  "feature_count": 54,
+  "features": [
+    "temperature_avg_c",
+    "temperature_max_c",
+    "temperature_min_c",
+    "relative_humidity_percent",
+    "rainfall_mm",
+    "solar_radiation_mj_m2",
+    "wind_speed_m_s",
+    "rainfall_3day_mm",
+    "rainfall_7day_mm",
+    "irrigation_risk_score",
+    "heat_stress_risk_score",
+    "disease_risk_score",
+    "soil_irrigation_factor",
+    "soil_adjusted_irrigation_risk_score",
+    "irrigation_risk_level",
+    "heat_stress_risk_level",
+    "disease_risk_level",
+    "soil_adjusted_irrigation_risk_level",
+    "ndvi_mean",
+    "ndwi_mean",
+    "ndmi_mean",
+    "ndre_mean",
+    "ndvi_level",
+    "moisture_level",
+    "canopy_stress_level",
+    "cloud_percentage",
+    "scene_count",
+    "days_since_sentinel2_observation",
+    "vegetation_data_freshness",
+    "vv_mean",
+    "vh_mean",
+    "vv_vh_ratio_mean",
+    "orbit_pass",
+    "scene_count_s1",
+    "days_since_sentinel1_observation",
+    "sentinel1_freshness_level",
+    "sand_percent",
+    "silt_percent",
+    "clay_percent",
+    "ph",
+    "organic_carbon_g_kg",
+    "bulk_density_g_cm3",
+    "cec_cmol_kg",
+    "mango_stage",
+    "stage_kc",
+    "interpolated_kc",
+    "et0_mm_day",
+    "etc_mm_day",
+    "irrigation_mm",
+    "water_input_mm",
+    "kc",
+    "irrigation_last_7d_mm",
+    "irrigation_last_14d_mm",
+    "irrigation_event_count_last_30d"
+  ],
+  "target_distribution": {
+    "train": {
+      "High": 286,
+      "Low": 198,
+      "Medium": 23
+    },
+    "test": {
+      "High": 127
+    }
+  },
+  "accuracy": 0.968503937007874,
+  "balanced_accuracy": 0.968503937007874,
+  "precision_macro": 1.0,
+  "recall_macro": 0.968503937007874,
+  "f1_macro": 0.984,
+  "classification_report": {
+    "High": {
+      "precision": 1.0,
+      "recall": 0.968503937007874,
+      "f1-score": 0.984,
+      "support": 127.0
+    },
+    "Low": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 0.0
+    },
+    "Medium": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 0.0
+    },
+    "accuracy": 0.968503937007874,
+    "macro avg": {
+      "precision": 0.3333333333333333,
+      "recall": 0.3228346456692913,
+      "f1-score": 0.328,
+      "support": 127.0
+    },
+    "weighted avg": {
+      "precision": 1.0,
+      "recall": 0.968503937007874,
+      "f1-score": 0.984,
+      "support": 127.0
+    }
+  },
+  "confusion_matrix": {
+    "labels": [
+      "High",
+      "Low",
+      "Medium"
+    ],
+    "matrix": [
+      [
+        123,
+        4,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ]
+  },
+  "trained_at": "2026-10-01T19:58:35",
+  "macro_average_classes": [
+    "High"
+  ],
+  "warning": "Labels are surrogate labels derived from FAO-56/rule-based advisory logic, NOT field-validated observations. This is a surrogate-label ML prototype, not a validated AI model.",
+  "test_set_note": "Test window contains only ['High']; metrics describe that window only and say little about the other classes."
+}

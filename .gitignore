@@ -15,15 +15,16 @@ logs/**/*.log
 # Earth Engine / credential files, if ever present locally
 *.json
 !configs/*.json
+# Small dashboard artifact for the AI/ML Advisory Preview page (versioned)
+!data/processed/muthukur_ml_model_metrics.json
 
 # OS/editor clutter
 .DS_Store
 .vscode/
 
-# Generated ML artifacts (reproducible via `python main.py`; not versioned by default)
+# Generated ML artifacts (reproducible via `python main.py`; not versioned).
+# The metrics JSON and feature-importance CSV ARE versioned (see above / not listed here).
 models/
 *.joblib
 *.pkl
 data/processed/muthukur_ml_training_dataset.csv
-data/processed/muthukur_ml_model_metrics.json
-data/processed/muthukur_ml_feature_importance.csv
