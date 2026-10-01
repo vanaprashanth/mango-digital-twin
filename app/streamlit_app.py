@@ -13,6 +13,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from app.sections.fao56_model_comparison import render_fao56_model_comparison_page
 from app.sections.irrigation_events import render_irrigation_events_page
 from app.sections.irrigation_what_if import render_irrigation_what_if_page
+from app.sections.ml_advisory_preview import render_ml_advisory_preview_page
 from app.sections.water_balance import render_water_balance_page
 from app.sections.phenology_water_balance import render_phenology_water_balance_page
 from app.sections.fao56_sensitivity_analysis import render_fao56_sensitivity_analysis_page
@@ -65,6 +66,10 @@ ET0_COMPARISON_SUMMARY_MD_PATH = config.path("et0_comparison_summary_md")
 PIPELINE_METADATA_PATH = config.path("pipeline_run_metadata_json")
 IRRIGATION_EVENTS_PATH = config.path("irrigation_events_csv")
 FAO56_INTERPOLATED_KC_PATH = config.path("fao56_interpolated_kc_water_balance_csv")
+ML_MODEL_PATH = config.path("irrigation_priority_model_path")
+ML_MODEL_METRICS_PATH = config.path("ml_model_metrics_json")
+ML_FEATURE_IMPORTANCE_PATH = config.path("ml_feature_importance_csv")
+ML_TRAINING_DATASET_PATH = config.path("ml_training_dataset_csv")
 
 
 st.set_page_config(
@@ -647,6 +652,7 @@ page = st.sidebar.radio(
         "Irrigation Advisory",
         "Irrigation Events",
         "Irrigation What-If",
+        "AI/ML Advisory Preview",
         "What-if Simulator",
         "Raw Data",
     ],
@@ -670,6 +676,7 @@ render_status_badge("Irrigation advisory (processed)", FORECAST_AWARE_ADVISORY_P
 render_status_badge("ET0 comparison (processed)", ET0_COMPARISON_CSV_PATH)
 render_status_badge("Irrigation events (manual)", IRRIGATION_EVENTS_PATH)
 render_status_badge("Interpolated-Kc FAO-56 water balance (processed)", FAO56_INTERPOLATED_KC_PATH)
+st.sidebar.markdown("🟢 **ML Model: Available**" if ML_MODEL_PATH.exists() else "🔴 **ML Model: Missing**")
 
 st.sidebar.divider()
 render_data_freshness_section()
@@ -809,6 +816,19 @@ elif page == "Irrigation What-If":
     # Fall back to constant-Kc if interpolated is unavailable.
     _what_if_df = fao56_interpolated_kc_df if fao56_interpolated_kc_df is not None else fao56_water_balance_df
     render_irrigation_what_if_page(_what_if_df)
+
+
+# =======================================================================
+# PAGE: AI/ML Advisory Preview (surrogate-label prototype, read-only)
+# =======================================================================
+
+elif page == "AI/ML Advisory Preview":
+    render_ml_advisory_preview_page(
+        ML_MODEL_PATH,
+        ML_MODEL_METRICS_PATH,
+        ML_FEATURE_IMPORTANCE_PATH,
+        ML_TRAINING_DATASET_PATH,
+    )
 
 
 # =======================================================================
