@@ -5,11 +5,122 @@ from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 from app.sections.freshness import show_freshness_indicator
 from src.irrigation.load_irrigation_events import append_irrigation_event
 
 _METHOD_OPTIONS = ["drip", "sprinkler", "flood", "manual", "other"]
+
+_RERUN_PIPELINE_HINT = (
+    "Run python main.py --skip-soil-fetch to apply irrigation events to the water balance."
+)
+
+_IMPACT_COLS = [
+    "date",
+    "irrigation_mm",
+    "method",
+    "source",
+    "notes",
+    "depletion_before_mm",
+    "depletion_on_event_mm",
+    "depletion_reduction_mm",
+    "water_stress_level",
+    "ks",
+    "in_water_balance",
+]
+
+
+def build_irrigation_impact_table(
+    irrigation_df: "pd.DataFrame | None",
+    fao56_df: "pd.DataFrame | None",
+) -> pd.DataFrame:
+    """
+    Join recorded irrigation events with FAO-56 (interpolated-Kc preferred)
+    water balance output to show how each event affected root-zone
+    depletion. Pure function — read-only, no Streamlit dependency, no file
+    writes; safe to unit test directly.
+
+    For each irrigation event (by date):
+      - depletion_before_mm    : root_zone_depletion_mm on the prior
+                                  calendar day (event date − 1), if that day
+                                  exists in fao56_df, else NaN.
+      - depletion_on_event_mm  : root_zone_depletion_mm on the event date
+                                  itself, if present in fao56_df, else NaN.
+      - depletion_reduction_mm : depletion_before_mm − depletion_on_event_mm,
+                                  if both are available, else NaN.
+      - water_stress_level     : from fao56_df on the event date, else None.
+      - ks                     : from fao56_df on the event date, else NaN.
+      - in_water_balance       : bool — True only if the event date itself
+                                  is present in fao56_df (i.e. the pipeline
+                                  has been rerun since this event was added).
+
+    Returns an empty DataFrame (correct schema, zero rows) if
+    `irrigation_df` is None or empty. Never raises — if `fao56_df` is None,
+    empty, or missing expected columns, every row is returned with
+    in_water_balance=False and the depletion/stress columns left as NaN/None.
+    """
+    if irrigation_df is None or irrigation_df.empty:
+        return pd.DataFrame(columns=_IMPACT_COLS)
+
+    events = irrigation_df.copy()
+    events["date"] = pd.to_datetime(events["date"])
+
+    fao56_lookup = None
+    fao56_required = {"date", "root_zone_depletion_mm"}
+    if (
+        fao56_df is not None
+        and not fao56_df.empty
+        and fao56_required.issubset(set(fao56_df.columns))
+    ):
+        fao56_lookup = fao56_df.copy()
+        fao56_lookup["date"] = pd.to_datetime(fao56_lookup["date"])
+        fao56_lookup = fao56_lookup.set_index("date").sort_index()
+
+    rows = []
+    for _, ev in events.iterrows():
+        ev_date = ev["date"]
+        prior_date = ev_date - pd.Timedelta(days=1)
+
+        depletion_before = float("nan")
+        depletion_on_event = float("nan")
+        stress_level = None
+        ks_value = float("nan")
+        in_balance = False
+
+        if fao56_lookup is not None:
+            if prior_date in fao56_lookup.index:
+                depletion_before = float(fao56_lookup.loc[prior_date, "root_zone_depletion_mm"])
+            if ev_date in fao56_lookup.index:
+                in_balance = True
+                depletion_on_event = float(fao56_lookup.loc[ev_date, "root_zone_depletion_mm"])
+                if "water_stress_level" in fao56_lookup.columns:
+                    stress_level = fao56_lookup.loc[ev_date, "water_stress_level"]
+                if "ks" in fao56_lookup.columns:
+                    ks_value = float(fao56_lookup.loc[ev_date, "ks"])
+
+        if pd.notna(depletion_before) and pd.notna(depletion_on_event):
+            depletion_reduction = depletion_before - depletion_on_event
+        else:
+            depletion_reduction = float("nan")
+
+        rows.append(
+            {
+                "date": ev_date,
+                "irrigation_mm": ev.get("irrigation_mm"),
+                "method": ev.get("method", ""),
+                "source": ev.get("source", ""),
+                "notes": ev.get("notes", ""),
+                "depletion_before_mm": depletion_before,
+                "depletion_on_event_mm": depletion_on_event,
+                "depletion_reduction_mm": depletion_reduction,
+                "water_stress_level": stress_level,
+                "ks": ks_value,
+                "in_water_balance": in_balance,
+            }
+        )
+
+    return pd.DataFrame(rows, columns=_IMPACT_COLS).sort_values("date").reset_index(drop=True)
 
 
 def _render_persistence_status() -> None:
@@ -266,9 +377,150 @@ def _render_add_event_form(csv_path: "Path | str") -> bool:
     return _handle_local_save(csv_path, event_date, mm_value, method, notes)
 
 
+def _render_impact_summary(
+    irrigation_df: pd.DataFrame,
+    fao56_df: "pd.DataFrame | None",
+) -> None:
+    """
+    Render the "Irrigation Impact Summary" section: joins recorded
+    irrigation events with the FAO-56 (interpolated-Kc preferred) water
+    balance output to show how each event affected root-zone depletion.
+
+    Read-only: only reads `irrigation_df` and `fao56_df` (already loaded by
+    the caller); never writes any file.
+    """
+    st.subheader("Irrigation Impact Summary")
+    st.caption(
+        "How recorded irrigation events affected the FAO-56 root-zone depletion "
+        "balance. Depletion before/after is read from the interpolated-Kc FAO-56 "
+        "output where available."
+    )
+
+    impact_df = build_irrigation_impact_table(irrigation_df, fao56_df)
+
+    if impact_df.empty:
+        st.info("No irrigation events available to summarize impact for.")
+        return
+
+    total_events = len(impact_df)
+    total_mm = float(impact_df["irrigation_mm"].sum())
+    latest_row = impact_df.iloc[-1]
+    latest_date_str = latest_row["date"].strftime("%Y-%m-%d")
+
+    imp_col1, imp_col2, imp_col3, imp_col4 = st.columns(4)
+    with imp_col1:
+        st.metric("Total recorded events", total_events)
+    with imp_col2:
+        st.metric("Total irrigation applied", f"{total_mm:.1f} mm")
+    with imp_col3:
+        st.metric("Latest irrigation date", latest_date_str)
+    with imp_col4:
+        if latest_row["in_water_balance"] and pd.notna(latest_row["depletion_reduction_mm"]):
+            st.metric(
+                "Latest event impact",
+                f"−{latest_row['depletion_reduction_mm']:.1f} mm depletion",
+            )
+        elif latest_row["in_water_balance"]:
+            st.metric("Latest event impact", "No prior-day baseline")
+        else:
+            st.metric("Latest event impact", "Not yet in water balance")
+
+    if not bool(impact_df["in_water_balance"].all()):
+        st.warning(f"⚠️ {_RERUN_PIPELINE_HINT}")
+
+    # ── Table: irrigation events joined with FAO-56 status ──────────────
+    display_df = impact_df.copy()
+    display_df["date"] = display_df["date"].dt.strftime("%Y-%m-%d")
+    display_df["depletion_before_mm"] = display_df["depletion_before_mm"].map(
+        lambda v: f"{v:.1f}" if pd.notna(v) else "—"
+    )
+    display_df["depletion_on_event_mm"] = display_df["depletion_on_event_mm"].map(
+        lambda v: f"{v:.1f}" if pd.notna(v) else "—"
+    )
+    display_df["depletion_reduction_mm"] = display_df["depletion_reduction_mm"].map(
+        lambda v: f"{v:.1f}" if pd.notna(v) else "—"
+    )
+    display_df["ks"] = display_df["ks"].map(lambda v: f"{v:.3f}" if pd.notna(v) else "—")
+    display_df["water_stress_level"] = display_df["water_stress_level"].fillna("—")
+    display_df["in_water_balance"] = display_df["in_water_balance"].map(
+        lambda v: "✅ Yes" if v else "⏳ Not yet"
+    )
+    display_df = display_df.rename(
+        columns={
+            "date": "Date",
+            "irrigation_mm": "Irrigation (mm)",
+            "method": "Method",
+            "source": "Source",
+            "notes": "Notes",
+            "depletion_before_mm": "Depletion before (mm)",
+            "depletion_on_event_mm": "Depletion on event date (mm)",
+            "depletion_reduction_mm": "Depletion reduction (mm)",
+            "water_stress_level": "Stress level on event date",
+            "ks": "Ks on event date",
+            "in_water_balance": "In water balance?",
+        }
+    )
+    st.dataframe(display_df, use_container_width=True)
+
+    # ── Chart: irrigation_mm vs root_zone_depletion_mm ───────────────────
+    if (
+        fao56_df is not None
+        and not fao56_df.empty
+        and {"date", "root_zone_depletion_mm"}.issubset(set(fao56_df.columns))
+    ):
+        chart_fao56 = fao56_df.copy()
+        chart_fao56["date"] = pd.to_datetime(chart_fao56["date"])
+        chart_fao56 = chart_fao56.sort_values("date")
+
+        impact_fig = go.Figure()
+        impact_fig.add_trace(
+            go.Scatter(
+                x=chart_fao56["date"],
+                y=chart_fao56["root_zone_depletion_mm"],
+                mode="lines",
+                name="Root-zone depletion (mm)",
+                line=dict(color="#636EFA", width=2),
+                yaxis="y1",
+            )
+        )
+        impact_fig.add_trace(
+            go.Bar(
+                x=impact_df["date"],
+                y=impact_df["irrigation_mm"],
+                name="Irrigation applied (mm)",
+                marker_color="steelblue",
+                opacity=0.7,
+                yaxis="y2",
+            )
+        )
+        impact_fig.update_layout(
+            title="Irrigation Events vs Root-Zone Depletion",
+            xaxis_title="Date",
+            yaxis=dict(title="Root-zone depletion (mm)"),
+            yaxis2=dict(title="Irrigation (mm)", overlaying="y", side="right"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            height=420,
+        )
+        st.plotly_chart(impact_fig, use_container_width=True)
+    else:
+        st.caption(
+            "FAO-56 water balance output not available — cannot chart depletion "
+            "alongside irrigation events."
+        )
+
+    st.caption(
+        "\"Depletion before\" is the FAO-56 root-zone depletion on the day "
+        "before the event; \"Depletion on event date\" includes that day's "
+        "irrigation, rainfall, and crop water use (FAO-56 eq 85). Events not "
+        "yet reflected in the FAO-56 output show as \"⏳ Not yet\" — rerun the "
+        "pipeline to include them."
+    )
+
+
 def render_irrigation_events_page(
     irrigation_df: pd.DataFrame | None,
     csv_path: "Path | str | None" = None,
+    fao56_df: "pd.DataFrame | None" = None,
 ) -> None:
     """Render the Irrigation Events dashboard page: add-event form + read-only summary."""
 
@@ -383,6 +635,11 @@ def render_irrigation_events_page(
         yaxis_title="Irrigation (mm)",
     )
     st.plotly_chart(irr_fig, use_container_width=True)
+
+    st.divider()
+
+    # ── Irrigation Impact Summary ────────────────────────────────────────
+    _render_impact_summary(irrigation_df, fao56_df)
 
     st.divider()
 
