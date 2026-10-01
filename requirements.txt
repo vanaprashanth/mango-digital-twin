@@ -5,13 +5,14 @@ requests
 pyyaml
 streamlit
 plotly
+scikit-learn
+joblib
 
 # Testing
 pytest
 
 # Planned / future (not yet imported by current code):
 #   python-dotenv  -- for .env-based config during cloud deployment
-#   scikit-learn   -- for ML models (Phase 6+, not started yet)
 #   geopandas      -- for GIS boundary layers (planned, see ROADMAP.md)
 #   shapely        -- geometry primitives (depends on geopandas work)
 

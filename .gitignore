@@ -19,3 +19,11 @@ logs/**/*.log
 # OS/editor clutter
 .DS_Store
 .vscode/
+
+# Generated ML artifacts (reproducible via `python main.py`; not versioned by default)
+models/
+*.joblib
+*.pkl
+data/processed/muthukur_ml_training_dataset.csv
+data/processed/muthukur_ml_model_metrics.json
+data/processed/muthukur_ml_feature_importance.csv
