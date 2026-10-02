@@ -2,15 +2,15 @@
   "model_type": "RandomForestClassifier",
   "label_type": "surrogate_rule_based",
   "target": "target_irrigation_priority",
-  "train_rows": 507,
+  "train_rows": 508,
   "test_rows": 127,
   "train_date_range": [
     "2025-01-01",
-    "2026-05-22"
+    "2026-05-23"
   ],
   "test_date_range": [
-    "2026-05-23",
-    "2026-09-26"
+    "2026-05-24",
+    "2026-09-27"
   ],
   "feature_count": 54,
   "features": [
@@ -71,7 +71,7 @@
   ],
   "target_distribution": {
     "train": {
-      "High": 286,
+      "High": 287,
       "Low": 198,
       "Medium": 23
     },
@@ -141,7 +141,7 @@
       ]
     ]
   },
-  "trained_at": "2026-10-01T19:58:35",
+  "trained_at": "2026-10-02T08:53:22",
   "macro_average_classes": [
     "High"
   ],
