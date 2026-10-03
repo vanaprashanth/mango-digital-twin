@@ -22,10 +22,10 @@ date,vv_mean,vh_mean,vv_vh_ratio_mean,orbit_pass,scene_count,latitude,longitude,
 2025-05-04,-11.225291934215388,-19.33372081553985,8.10842888132446,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
 2025-05-11,-11.479484252980525,-18.459389646872182,6.979905393891663,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
 2025-05-16,-8.740924596745096,-16.162209100155962,7.421284503410867,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
-2025-05-23,-11.55898659565753,-18.007434022439888,6.448447426782359,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-05-23,-11.558986595657528,-18.007434022439888,6.44844742678236,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
 2025-05-28,-10.577372839435052,-17.701336825558762,7.123963986123711,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
 2025-06-04,-11.849468214526295,-18.46172467344661,6.612256458920319,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
-2025-06-09,-8.767684574335227,-16.654268492565407,7.88658391823018,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
+2025-06-09,-8.76768457433523,-16.654268492565407,7.886583918230178,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
 2025-06-16,-12.085778900222405,-18.917082773485856,6.831303873263453,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
 2025-06-21,-8.18679968759435,-16.796074367715363,8.609274680121013,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
 2025-06-28,-12.40371174611788,-19.33954408848182,6.935832342363939,DESCENDING,1,13.294219,78.624294,500,Moderate backscatter,Moderate volume scattering
@@ -34,7 +34,7 @@ date,vv_mean,vh_mean,vv_vh_ratio_mean,orbit_pass,scene_count,latitude,longitude,
 2025-07-15,-10.20687088469169,-18.28985743358559,8.0829865488939,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
 2025-07-22,-11.204233842545936,-17.928358952817895,6.72412511027196,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
 2025-07-27,-9.978982157456937,-17.312726333980105,7.333744176523171,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
-2025-08-03,-11.95589847082178,-18.46519980022009,6.509301329398314,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
+2025-08-03,-11.95589847082178,-18.4651998002201,6.509301329398317,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Moderate volume scattering
 2025-08-08,-8.97396512123766,-16.090814277115435,7.116849155877775,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
 2025-08-15,-10.965910885389292,-17.23351717553613,6.267606290146837,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
 2025-08-20,-9.590954977709284,-16.635893796217168,7.044938818507884,DESCENDING,1,13.294219,78.624294,500,High backscatter (rougher surface or wet soil),Higher volume scattering (denser canopy or wet conditions)
