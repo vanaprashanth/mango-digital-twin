@@ -1,78 +1,78 @@
 feature,importance
-relative_humidity_percent,0.06623560700782366
-interpolated_kc,0.06426008303050032
-et0_mm_day,0.06343312152243909
-etc_mm_day,0.06300561421149849
-kc,0.06293645516384481
-vh_mean,0.06001938198202015
-temperature_max_c,0.05547317277949472
-ndvi_mean,0.041994858349094936
-cloud_percentage,0.0378828657666408
-ndmi_mean,0.036262539210329015
-temperature_avg_c,0.03281228542551406
-stage_kc,0.031737065866710205
-ndvi_level_High vegetation greenness,0.027546794808095684
-soil_adjusted_irrigation_risk_score,0.026165663584270558
-ndvi_level_Moderate vegetation greenness,0.02587348292474762
-irrigation_risk_score,0.025696660324594004
-vv_vh_ratio_mean,0.02557347254526748
-temperature_min_c,0.02403389975124792
-heat_stress_risk_score,0.02199424785813961
-ndre_mean,0.020868045195552187
-days_since_sentinel2_observation,0.020630631742233774
-ndwi_mean,0.01792949435654526
-wind_speed_m_s,0.015970091295145313
-vv_mean,0.014676761901463015
-rainfall_3day_mm,0.013297658137359964
-mango_stage_Flower induction / pre-flowering,0.011691452076828639
-solar_radiation_mj_m2,0.010652791976315025
-scene_count,0.009190921258852793
-rainfall_7day_mm,0.008954316611048925
-disease_risk_score,0.007808490162548305
-rainfall_mm,0.007123579531105284
-water_input_mm,0.007094187760948627
-mango_stage_Maturity / harvest,0.004026201342408118
-vegetation_data_freshness_Moderate,0.0036103119375871513
-mango_stage_Rest / vegetative phase,0.0033117269208039536
-irrigation_risk_level_High,0.003257658810965244
-days_since_sentinel1_observation,0.0031234608758853037
-mango_stage_Flowering,0.0019514285308828536
-vegetation_data_freshness_Fresh,0.0017495373783457816
-soil_adjusted_irrigation_risk_level_High,0.0017199398424502976
-irrigation_risk_level_Low,0.0016517711346877525
-vegetation_data_freshness_Stale,0.0014859855288508362
-disease_risk_level_Low,0.0014683944326101164
-soil_adjusted_irrigation_risk_level_Low,0.0014554500622860351
-irrigation_risk_level_Medium,0.0013451021532606695
-canopy_stress_level_Moderate canopy condition,0.0012527915410007005
-heat_stress_risk_level_Low,0.001231451789909501
-disease_risk_level_Medium,0.001225504483416104
-canopy_stress_level_Stronger canopy / chlorophyll signal,0.0012247324206225868
-mango_stage_Fruit development,0.0011868987873560053
-soil_adjusted_irrigation_risk_level_Medium,0.0010236151065252403
-mango_stage_Fruit set,0.0009189452662737565
-disease_risk_level_High,0.0007659051014186435
-heat_stress_risk_level_Medium,0.0006461237862957069
-sentinel1_freshness_level_Fresh,0.0006059167948266309
-vegetation_data_freshness_Missing,0.0004247787306960264
-moisture_level_Moderate moisture,0.00034454462869703726
-sentinel1_freshness_level_Missing,7.05899733041437e-05
-ndvi_level_Low vegetation greenness,4.771856305350147e-05
-canopy_stress_level_Possible low chlorophyll / canopy stress,2.868176364727052e-05
-sentinel1_freshness_level_Moderate,1.9138193712818808e-05
+interpolated_kc,0.0720160576526233
+kc,0.06774466965019829
+vh_mean,0.06566597436844288
+relative_humidity_percent,0.06353985853449931
+et0_mm_day,0.061399899904889775
+etc_mm_day,0.05879384202340418
+temperature_max_c,0.0557356140510634
+ndvi_mean,0.040824229874817
+cloud_percentage,0.03964928053885908
+ndmi_mean,0.03433234175881027
+stage_kc,0.03330858609055836
+temperature_avg_c,0.030222894833404127
+vv_vh_ratio_mean,0.025291514795198904
+heat_stress_risk_score,0.024059985919158828
+temperature_min_c,0.023368393168023863
+ndvi_level_Moderate vegetation greenness,0.02334442580714702
+ndvi_level_High vegetation greenness,0.023069739532055118
+soil_adjusted_irrigation_risk_score,0.02201793737188553
+days_since_sentinel2_observation,0.020706076557980877
+irrigation_risk_score,0.020675042212039186
+ndre_mean,0.019815811810006082
+ndwi_mean,0.01801204644942118
+vv_mean,0.016301360981435052
+wind_speed_m_s,0.013414826306835024
+rainfall_3day_mm,0.012212107585528693
+scene_count,0.012206625257277623
+solar_radiation_mj_m2,0.011842683838604868
+mango_stage_Flower induction / pre-flowering,0.010118906270800322
+rainfall_7day_mm,0.009934350910236325
+disease_risk_score,0.008221809154124845
+rainfall_mm,0.007410499415528166
+water_input_mm,0.007068661140463661
+days_since_sentinel1_observation,0.004387901628064056
+mango_stage_Maturity / harvest,0.00437995437747547
+mango_stage_Flowering,0.0036840733021887067
+vegetation_data_freshness_Moderate,0.00350481520689655
+mango_stage_Rest / vegetative phase,0.00342446686314361
+irrigation_risk_level_High,0.0032577534643341353
+vegetation_data_freshness_Fresh,0.0026753255387343576
+soil_adjusted_irrigation_risk_level_High,0.00252726148782869
+heat_stress_risk_level_Low,0.0023476990625704336
+soil_adjusted_irrigation_risk_level_Low,0.002288101392530717
+canopy_stress_level_Moderate canopy condition,0.00210246957162266
+irrigation_risk_level_Medium,0.0018784723668565711
+mango_stage_Fruit set,0.0016768752534169725
+canopy_stress_level_Stronger canopy / chlorophyll signal,0.0013887372149519774
+mango_stage_Fruit development,0.0013491335311457
+irrigation_risk_level_Low,0.0010271719281550204
+vegetation_data_freshness_Stale,0.0010131274047848883
+disease_risk_level_Low,0.0009655301970379432
+vegetation_data_freshness_Missing,0.0007832538816237163
+sentinel1_freshness_level_Fresh,0.0006414912556213338
+disease_risk_level_High,0.0006106692931875408
+soil_adjusted_irrigation_risk_level_Medium,0.0005831417528008685
+disease_risk_level_Medium,0.0005611034528987214
+moisture_level_Moderate moisture,0.00047591974604730493
+sentinel1_freshness_level_Missing,0.00011336169388143724
+moisture_level_Good moisture,2.6135366879687813e-05
 soil_irrigation_factor,0.0
+silt_percent,0.0
+clay_percent,0.0
+irrigation_last_14d_mm,0.0
 irrigation_event_count_last_30d,0.0
 irrigation_mm,0.0
 irrigation_last_7d_mm,0.0
-irrigation_last_14d_mm,0.0
+cec_cmol_kg,0.0
 bulk_density_g_cm3,0.0
 organic_carbon_g_kg,0.0
 ph,0.0
 scene_count_s1,0.0
 sand_percent,0.0
-silt_percent,0.0
-clay_percent,0.0
-cec_cmol_kg,0.0
+heat_stress_risk_level_Medium,0.0
 heat_stress_risk_level_High,0.0
-moisture_level_Good moisture,0.0
+ndvi_level_Low vegetation greenness,0.0
+canopy_stress_level_Possible low chlorophyll / canopy stress,0.0
 orbit_pass_DESCENDING,0.0
+sentinel1_freshness_level_Moderate,0.0
