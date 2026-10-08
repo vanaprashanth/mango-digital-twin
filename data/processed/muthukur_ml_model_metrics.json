@@ -3,14 +3,14 @@
   "label_type": "surrogate_rule_based",
   "target": "target_irrigation_priority",
   "train_rows": 512,
-  "test_rows": 128,
+  "test_rows": 129,
   "train_date_range": [
     "2025-01-01",
     "2026-05-27"
   ],
   "test_date_range": [
     "2026-05-28",
-    "2026-10-02"
+    "2026-10-03"
   ],
   "feature_count": 54,
   "features": [
@@ -76,20 +76,20 @@
       "Medium": 23
     },
     "test": {
-      "High": 128
+      "High": 129
     }
   },
-  "accuracy": 0.9765625,
-  "balanced_accuracy": 0.9765625,
+  "accuracy": 0.9767441860465116,
+  "balanced_accuracy": 0.9767441860465116,
   "precision_macro": 1.0,
-  "recall_macro": 0.9765625,
-  "f1_macro": 0.9881422924901185,
+  "recall_macro": 0.9767441860465116,
+  "f1_macro": 0.9882352941176471,
   "classification_report": {
     "High": {
       "precision": 1.0,
-      "recall": 0.9765625,
-      "f1-score": 0.9881422924901185,
-      "support": 128.0
+      "recall": 0.9767441860465116,
+      "f1-score": 0.9882352941176471,
+      "support": 129.0
     },
     "Low": {
       "precision": 0.0,
@@ -103,18 +103,18 @@
       "f1-score": 0.0,
       "support": 0.0
     },
-    "accuracy": 0.9765625,
+    "accuracy": 0.9767441860465116,
     "macro avg": {
       "precision": 0.3333333333333333,
-      "recall": 0.3255208333333333,
-      "f1-score": 0.32938076416337286,
-      "support": 128.0
+      "recall": 0.3255813953488372,
+      "f1-score": 0.32941176470588235,
+      "support": 129.0
     },
     "weighted avg": {
       "precision": 1.0,
-      "recall": 0.9765625,
-      "f1-score": 0.9881422924901185,
-      "support": 128.0
+      "recall": 0.9767441860465116,
+      "f1-score": 0.9882352941176471,
+      "support": 129.0
     }
   },
   "confusion_matrix": {
@@ -125,7 +125,7 @@
     ],
     "matrix": [
       [
-        125,
+        126,
         3,
         0
       ],
@@ -141,7 +141,7 @@
       ]
     ]
   },
-  "trained_at": "2026-10-07T09:09:26",
+  "trained_at": "2026-10-08T09:23:27",
   "macro_average_classes": [
     "High"
   ],
