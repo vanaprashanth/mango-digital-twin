@@ -3,14 +3,14 @@
   "label_type": "surrogate_rule_based",
   "target": "target_irrigation_priority",
   "train_rows": 520,
-  "test_rows": 130,
+  "test_rows": 131,
   "train_date_range": [
     "2025-01-01",
     "2026-06-04"
   ],
   "test_date_range": [
     "2026-06-05",
-    "2026-10-15"
+    "2026-10-16"
   ],
   "feature_count": 54,
   "features": [
@@ -76,45 +76,47 @@
       "Medium": 23
     },
     "test": {
-      "High": 130
+      "High": 112,
+      "Medium": 18,
+      "Low": 1
     }
   },
-  "accuracy": 0.9692307692307692,
-  "balanced_accuracy": 0.9692307692307692,
-  "precision_macro": 1.0,
-  "recall_macro": 0.9692307692307692,
-  "f1_macro": 0.984375,
+  "accuracy": 0.8625954198473282,
+  "balanced_accuracy": 0.6666666666666666,
+  "precision_macro": 0.36296296296296293,
+  "recall_macro": 0.6666666666666666,
+  "f1_macro": 0.42483660130718953,
   "classification_report": {
     "High": {
-      "precision": 1.0,
-      "recall": 0.9692307692307692,
-      "f1-score": 0.984375,
-      "support": 130.0
+      "precision": 0.8888888888888888,
+      "recall": 1.0,
+      "f1-score": 0.9411764705882353,
+      "support": 112.0
     },
     "Low": {
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1-score": 0.0,
-      "support": 0.0
+      "precision": 0.2,
+      "recall": 1.0,
+      "f1-score": 0.3333333333333333,
+      "support": 1.0
     },
     "Medium": {
       "precision": 0.0,
       "recall": 0.0,
       "f1-score": 0.0,
-      "support": 0.0
+      "support": 18.0
     },
-    "accuracy": 0.9692307692307692,
+    "accuracy": 0.8625954198473282,
     "macro avg": {
-      "precision": 0.3333333333333333,
-      "recall": 0.3230769230769231,
-      "f1-score": 0.328125,
-      "support": 130.0
+      "precision": 0.36296296296296293,
+      "recall": 0.6666666666666666,
+      "f1-score": 0.42483660130718953,
+      "support": 131.0
     },
     "weighted avg": {
-      "precision": 1.0,
-      "recall": 0.9692307692307692,
-      "f1-score": 0.984375,
-      "support": 130.0
+      "precision": 0.7614927905004241,
+      "recall": 0.8625954198473282,
+      "f1-score": 0.8072144888489746,
+      "support": 131.0
     }
   },
   "confusion_matrix": {
@@ -125,26 +127,27 @@
     ],
     "matrix": [
       [
-        126,
+        112,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        14,
         4,
-        0
-      ],
-      [
-        0,
-        0,
-        0
-      ],
-      [
-        0,
-        0,
         0
       ]
     ]
   },
-  "trained_at": "2026-10-20T07:53:14",
+  "trained_at": "2026-10-21T07:57:00",
   "macro_average_classes": [
-    "High"
+    "High",
+    "Low",
+    "Medium"
   ],
-  "warning": "Labels are surrogate labels derived from FAO-56/rule-based advisory logic, NOT field-validated observations. This is a surrogate-label ML prototype, not a validated AI model.",
-  "test_set_note": "Test window contains only ['High']; metrics describe that window only and say little about the other classes."
+  "warning": "Labels are surrogate labels derived from FAO-56/rule-based advisory logic, NOT field-validated observations. This is a surrogate-label ML prototype, not a validated AI model."
 }
