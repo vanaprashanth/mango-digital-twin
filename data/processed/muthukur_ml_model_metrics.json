@@ -2,15 +2,15 @@
   "model_type": "RandomForestClassifier",
   "label_type": "surrogate_rule_based",
   "target": "target_irrigation_priority",
-  "train_rows": 520,
+  "train_rows": 521,
   "test_rows": 131,
   "train_date_range": [
     "2025-01-01",
-    "2026-06-04"
+    "2026-06-05"
   ],
   "test_date_range": [
-    "2026-06-05",
-    "2026-10-16"
+    "2026-06-06",
+    "2026-10-17"
   ],
   "feature_count": 54,
   "features": [
@@ -71,51 +71,49 @@
   ],
   "target_distribution": {
     "train": {
-      "High": 299,
-      "Low": 198,
-      "Medium": 23
+      "Low": 435,
+      "High": 70,
+      "Medium": 16
     },
     "test": {
-      "High": 112,
-      "Medium": 18,
-      "Low": 1
+      "Low": 131
     }
   },
-  "accuracy": 0.8625954198473282,
-  "balanced_accuracy": 0.6666666666666666,
-  "precision_macro": 0.36296296296296293,
-  "recall_macro": 0.6666666666666666,
-  "f1_macro": 0.42483660130718953,
+  "accuracy": 0.9847328244274809,
+  "balanced_accuracy": 0.9847328244274809,
+  "precision_macro": 1.0,
+  "recall_macro": 0.9847328244274809,
+  "f1_macro": 0.9923076923076923,
   "classification_report": {
     "High": {
-      "precision": 0.8888888888888888,
-      "recall": 1.0,
-      "f1-score": 0.9411764705882353,
-      "support": 112.0
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 0.0
     },
     "Low": {
-      "precision": 0.2,
-      "recall": 1.0,
-      "f1-score": 0.3333333333333333,
-      "support": 1.0
+      "precision": 1.0,
+      "recall": 0.9847328244274809,
+      "f1-score": 0.9923076923076923,
+      "support": 131.0
     },
     "Medium": {
       "precision": 0.0,
       "recall": 0.0,
       "f1-score": 0.0,
-      "support": 18.0
+      "support": 0.0
     },
-    "accuracy": 0.8625954198473282,
+    "accuracy": 0.9847328244274809,
     "macro avg": {
-      "precision": 0.36296296296296293,
-      "recall": 0.6666666666666666,
-      "f1-score": 0.42483660130718953,
+      "precision": 0.3333333333333333,
+      "recall": 0.3282442748091603,
+      "f1-score": 0.33076923076923076,
       "support": 131.0
     },
     "weighted avg": {
-      "precision": 0.7614927905004241,
-      "recall": 0.8625954198473282,
-      "f1-score": 0.8072144888489746,
+      "precision": 1.0,
+      "recall": 0.9847328244274809,
+      "f1-score": 0.9923076923076923,
       "support": 131.0
     }
   },
@@ -127,27 +125,26 @@
     ],
     "matrix": [
       [
-        112,
+        0,
         0,
         0
       ],
       [
-        0,
-        1,
+        2,
+        129,
         0
       ],
       [
-        14,
-        4,
+        0,
+        0,
         0
       ]
     ]
   },
-  "trained_at": "2026-10-21T07:57:00",
+  "trained_at": "2026-10-22T07:53:34",
   "macro_average_classes": [
-    "High",
-    "Low",
-    "Medium"
+    "Low"
   ],
-  "warning": "Labels are surrogate labels derived from FAO-56/rule-based advisory logic, NOT field-validated observations. This is a surrogate-label ML prototype, not a validated AI model."
+  "warning": "Labels are surrogate labels derived from FAO-56/rule-based advisory logic, NOT field-validated observations. This is a surrogate-label ML prototype, not a validated AI model.",
+  "test_set_note": "Test window contains only ['Low']; metrics describe that window only and say little about the other classes."
 }
