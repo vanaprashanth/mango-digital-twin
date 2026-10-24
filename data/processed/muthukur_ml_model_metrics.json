@@ -2,15 +2,15 @@
   "model_type": "RandomForestClassifier",
   "label_type": "surrogate_rule_based",
   "target": "target_irrigation_priority",
-  "train_rows": 521,
-  "test_rows": 131,
+  "train_rows": 525,
+  "test_rows": 132,
   "train_date_range": [
     "2025-01-01",
-    "2026-06-05"
+    "2026-06-09"
   ],
   "test_date_range": [
-    "2026-06-06",
-    "2026-10-17"
+    "2026-06-10",
+    "2026-10-19"
   ],
   "feature_count": 54,
   "features": [
@@ -71,19 +71,19 @@
   ],
   "target_distribution": {
     "train": {
-      "Low": 435,
+      "Low": 439,
       "High": 70,
       "Medium": 16
     },
     "test": {
-      "Low": 131
+      "Low": 132
     }
   },
-  "accuracy": 0.9847328244274809,
-  "balanced_accuracy": 0.9847328244274809,
+  "accuracy": 0.9848484848484849,
+  "balanced_accuracy": 0.9848484848484849,
   "precision_macro": 1.0,
-  "recall_macro": 0.9847328244274809,
-  "f1_macro": 0.9923076923076923,
+  "recall_macro": 0.9848484848484849,
+  "f1_macro": 0.9923664122137404,
   "classification_report": {
     "High": {
       "precision": 0.0,
@@ -93,9 +93,9 @@
     },
     "Low": {
       "precision": 1.0,
-      "recall": 0.9847328244274809,
-      "f1-score": 0.9923076923076923,
-      "support": 131.0
+      "recall": 0.9848484848484849,
+      "f1-score": 0.9923664122137404,
+      "support": 132.0
     },
     "Medium": {
       "precision": 0.0,
@@ -103,18 +103,18 @@
       "f1-score": 0.0,
       "support": 0.0
     },
-    "accuracy": 0.9847328244274809,
+    "accuracy": 0.9848484848484849,
     "macro avg": {
       "precision": 0.3333333333333333,
-      "recall": 0.3282442748091603,
-      "f1-score": 0.33076923076923076,
-      "support": 131.0
+      "recall": 0.3282828282828283,
+      "f1-score": 0.33078880407124683,
+      "support": 132.0
     },
     "weighted avg": {
       "precision": 1.0,
-      "recall": 0.9847328244274809,
-      "f1-score": 0.9923076923076923,
-      "support": 131.0
+      "recall": 0.9848484848484849,
+      "f1-score": 0.9923664122137403,
+      "support": 132.0
     }
   },
   "confusion_matrix": {
@@ -131,7 +131,7 @@
       ],
       [
         2,
-        129,
+        130,
         0
       ],
       [
@@ -141,7 +141,7 @@
       ]
     ]
   },
-  "trained_at": "2026-10-23T07:52:23",
+  "trained_at": "2026-10-24T07:33:28",
   "macro_average_classes": [
     "Low"
   ],
