@@ -1,10 +1,10 @@
 # ET0 Comparison: Open-Meteo vs FAO-56 Penman-Monteith
 
-*Generated: 2026-10-28T08:55:16*
+*Generated: 2026-10-29T08:50:03*
 
 ## Result: No overlapping dates
 
-The Open-Meteo ET0 dataset covers **2026-10-21 to 2026-11-03** and the FAO-56 computed
+The Open-Meteo ET0 dataset covers **2026-10-22 to 2026-11-04** and the FAO-56 computed
 ET0 dataset covers **2025-01-01 to 2026-10-19**. These date ranges do not overlap, so
 no day-by-day comparison is possible with current cached data.
 
