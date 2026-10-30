@@ -2,15 +2,15 @@
   "model_type": "RandomForestClassifier",
   "label_type": "surrogate_rule_based",
   "target": "target_irrigation_priority",
-  "train_rows": 525,
-  "test_rows": 132,
+  "train_rows": 529,
+  "test_rows": 133,
   "train_date_range": [
     "2025-01-01",
-    "2026-06-09"
+    "2026-06-13"
   ],
   "test_date_range": [
-    "2026-06-10",
-    "2026-10-19"
+    "2026-06-14",
+    "2026-10-24"
   ],
   "feature_count": 54,
   "features": [
@@ -71,33 +71,33 @@
   ],
   "target_distribution": {
     "train": {
-      "High": 304,
+      "High": 308,
       "Low": 198,
       "Medium": 23
     },
     "test": {
-      "High": 109,
+      "High": 105,
       "Medium": 18,
-      "Low": 5
+      "Low": 10
     }
   },
-  "accuracy": 0.8636363636363636,
+  "accuracy": 0.8646616541353384,
   "balanced_accuracy": 0.6666666666666666,
-  "precision_macro": 0.5287619047619048,
+  "precision_macro": 0.548076923076923,
   "recall_macro": 0.6666666666666666,
-  "f1_macro": 0.5883190883190883,
+  "f1_macro": 0.6009661835748793,
   "classification_report": {
     "High": {
-      "precision": 0.872,
+      "precision": 0.875,
       "recall": 1.0,
-      "f1-score": 0.9316239316239316,
-      "support": 109.0
+      "f1-score": 0.9333333333333333,
+      "support": 105.0
     },
     "Low": {
-      "precision": 0.7142857142857143,
+      "precision": 0.7692307692307693,
       "recall": 1.0,
-      "f1-score": 0.8333333333333334,
-      "support": 5.0
+      "f1-score": 0.8695652173913043,
+      "support": 10.0
     },
     "Medium": {
       "precision": 0.0,
@@ -105,18 +105,18 @@
       "f1-score": 0.0,
       "support": 18.0
     },
-    "accuracy": 0.8636363636363636,
+    "accuracy": 0.8646616541353384,
     "macro avg": {
-      "precision": 0.5287619047619048,
+      "precision": 0.548076923076923,
       "recall": 0.6666666666666666,
-      "f1-score": 0.5883190883190883,
-      "support": 132.0
+      "f1-score": 0.6009661835748793,
+      "support": 133.0
     },
     "weighted avg": {
-      "precision": 0.7471168831168831,
-      "recall": 0.8636363636363636,
-      "f1-score": 0.8008611758611759,
-      "support": 132.0
+      "precision": 0.7486263736263736,
+      "recall": 0.8646616541353384,
+      "f1-score": 0.8022229486760379,
+      "support": 133.0
     }
   },
   "confusion_matrix": {
@@ -127,23 +127,23 @@
     ],
     "matrix": [
       [
-        109,
+        105,
         0,
         0
       ],
       [
         0,
-        5,
+        10,
         0
       ],
       [
-        16,
-        2,
+        15,
+        3,
         0
       ]
     ]
   },
-  "trained_at": "2026-10-29T08:50:03",
+  "trained_at": "2026-10-30T08:54:12",
   "macro_average_classes": [
     "High",
     "Low",
