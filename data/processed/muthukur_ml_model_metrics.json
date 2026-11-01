@@ -2,15 +2,15 @@
   "model_type": "RandomForestClassifier",
   "label_type": "surrogate_rule_based",
   "target": "target_irrigation_priority",
-  "train_rows": 530,
+  "train_rows": 532,
   "test_rows": 133,
   "train_date_range": [
     "2025-01-01",
-    "2026-06-14"
+    "2026-06-16"
   ],
   "test_date_range": [
-    "2026-06-15",
-    "2026-10-25"
+    "2026-06-17",
+    "2026-10-27"
   ],
   "feature_count": 54,
   "features": [
@@ -71,33 +71,33 @@
   ],
   "target_distribution": {
     "train": {
-      "High": 309,
+      "High": 311,
       "Low": 198,
       "Medium": 23
     },
     "test": {
-      "High": 104,
+      "High": 102,
       "Medium": 18,
-      "Low": 11
+      "Low": 13
     }
   },
   "accuracy": 0.8646616541353384,
   "balanced_accuracy": 0.6666666666666666,
-  "precision_macro": 0.5382297551789077,
+  "precision_macro": 0.5614316239316239,
   "recall_macro": 0.6666666666666666,
-  "f1_macro": 0.5943635943635943,
+  "f1_macro": 0.6093528578176665,
   "classification_report": {
     "High": {
-      "precision": 0.8813559322033898,
+      "precision": 0.8717948717948718,
       "recall": 1.0,
-      "f1-score": 0.9369369369369369,
-      "support": 104.0
+      "f1-score": 0.9315068493150684,
+      "support": 102.0
     },
     "Low": {
-      "precision": 0.7333333333333333,
+      "precision": 0.8125,
       "recall": 1.0,
-      "f1-score": 0.8461538461538461,
-      "support": 11.0
+      "f1-score": 0.896551724137931,
+      "support": 13.0
     },
     "Medium": {
       "precision": 0.0,
@@ -107,15 +107,15 @@
     },
     "accuracy": 0.8646616541353384,
     "macro avg": {
-      "precision": 0.5382297551789077,
+      "precision": 0.5614316239316239,
       "recall": 0.6666666666666666,
-      "f1-score": 0.5943635943635943,
+      "f1-score": 0.6093528578176665,
       "support": 133.0
     },
     "weighted avg": {
-      "precision": 0.7498322076377384,
+      "precision": 0.7480118565644881,
       "recall": 0.8646616541353384,
-      "f1-score": 0.8026250657829606,
+      "f1-score": 0.8020215867964668,
       "support": 133.0
     }
   },
@@ -127,23 +127,23 @@
     ],
     "matrix": [
       [
-        104,
+        102,
         0,
         0
       ],
       [
         0,
-        11,
+        13,
         0
       ],
       [
-        14,
-        4,
+        15,
+        3,
         0
       ]
     ]
   },
-  "trained_at": "2026-10-31T08:45:17",
+  "trained_at": "2026-11-01T09:36:21",
   "macro_average_classes": [
     "High",
     "Low",
