@@ -2,15 +2,15 @@
   "model_type": "RandomForestClassifier",
   "label_type": "surrogate_rule_based",
   "target": "target_irrigation_priority",
-  "train_rows": 534,
+  "train_rows": 535,
   "test_rows": 134,
   "train_date_range": [
     "2025-01-01",
-    "2026-06-18"
+    "2026-06-19"
   ],
   "test_date_range": [
-    "2026-06-19",
-    "2026-10-30"
+    "2026-06-20",
+    "2026-10-31"
   ],
   "feature_count": 54,
   "features": [
@@ -71,33 +71,33 @@
   ],
   "target_distribution": {
     "train": {
-      "High": 313,
+      "High": 314,
       "Low": 198,
       "Medium": 23
     },
     "test": {
-      "High": 100,
+      "High": 99,
       "Medium": 18,
-      "Low": 16
+      "Low": 17
     }
   },
   "accuracy": 0.8656716417910447,
   "balanced_accuracy": 0.6666666666666666,
-  "precision_macro": 0.570556826849733,
+  "precision_macro": 0.5728070175438597,
   "recall_macro": 0.6666666666666666,
-  "f1_macro": 0.6148394241417497,
+  "f1_macro": 0.6161654612358838,
   "classification_report": {
     "High": {
-      "precision": 0.8695652173913043,
+      "precision": 0.868421052631579,
       "recall": 1.0,
-      "f1-score": 0.9302325581395349,
-      "support": 100.0
+      "f1-score": 0.9295774647887324,
+      "support": 99.0
     },
     "Low": {
-      "precision": 0.8421052631578947,
+      "precision": 0.85,
       "recall": 1.0,
-      "f1-score": 0.9142857142857143,
-      "support": 16.0
+      "f1-score": 0.918918918918919,
+      "support": 17.0
     },
     "Medium": {
       "precision": 0.0,
@@ -107,15 +107,15 @@
     },
     "accuracy": 0.8656716417910447,
     "macro avg": {
-      "precision": 0.570556826849733,
+      "precision": 0.5728070175438597,
       "recall": 0.6666666666666666,
-      "f1-score": 0.6148394241417497,
+      "f1-score": 0.6161654612358838,
       "support": 134.0
     },
     "weighted avg": {
-      "precision": 0.7494791488780355,
+      "precision": 0.7494304791830322,
       "recall": 0.8656716417910447,
-      "f1-score": 0.8033718450934695,
+      "f1-score": 0.8033566465351204,
       "support": 134.0
     }
   },
@@ -127,13 +127,13 @@
     ],
     "matrix": [
       [
-        100,
+        99,
         0,
         0
       ],
       [
         0,
-        16,
+        17,
         0
       ],
       [
@@ -143,7 +143,7 @@
       ]
     ]
   },
-  "trained_at": "2026-11-04T09:44:39",
+  "trained_at": "2026-11-05T09:46:36",
   "macro_average_classes": [
     "High",
     "Low",
