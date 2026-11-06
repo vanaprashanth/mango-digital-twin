@@ -13,8 +13,8 @@ The two CSVs above are joined on `date` (inner join — only dates present in bo
 
 ## Key Findings
 
-- Matched days compared: **669**
-- Date range: **2025-01-01** to **2026-10-31**
+- Matched days compared: **670**
+- Date range: **2025-01-01** to **2026-11-01**
 - Mean ETc difference (phenology - constant): **-0.048 mm/day**
 - Mean absolute ETc difference: **0.570 mm/day**
 - Largest single-day ETc difference: **+1.328 mm/day** on **2026-04-27**
@@ -34,7 +34,7 @@ The two CSVs above are joined on `date` (inner join — only dates present in bo
 
 | Mango stage | Days | Avg ETc difference (mm/day) | Days stress level changed |
 |---|---|---|---|
-| Flower induction / pre-flowering | 123 | -0.308 | 10 |
+| Flower induction / pre-flowering | 124 | -0.309 | 10 |
 | Flowering | 92 | +0.000 | 13 |
 | Fruit development | 122 | +1.026 | 0 |
 | Fruit set | 56 | +0.587 | 0 |

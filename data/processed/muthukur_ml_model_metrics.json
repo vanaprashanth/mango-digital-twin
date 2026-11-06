@@ -2,15 +2,15 @@
   "model_type": "RandomForestClassifier",
   "label_type": "surrogate_rule_based",
   "target": "target_irrigation_priority",
-  "train_rows": 535,
+  "train_rows": 536,
   "test_rows": 134,
   "train_date_range": [
     "2025-01-01",
-    "2026-06-19"
+    "2026-06-20"
   ],
   "test_date_range": [
-    "2026-06-20",
-    "2026-10-31"
+    "2026-06-21",
+    "2026-11-01"
   ],
   "feature_count": 54,
   "features": [
@@ -71,33 +71,33 @@
   ],
   "target_distribution": {
     "train": {
-      "High": 314,
+      "High": 315,
       "Low": 198,
       "Medium": 23
     },
     "test": {
-      "High": 99,
+      "High": 98,
       "Medium": 18,
-      "Low": 17
+      "Low": 18
     }
   },
   "accuracy": 0.8656716417910447,
   "balanced_accuracy": 0.6666666666666666,
-  "precision_macro": 0.5728070175438597,
+  "precision_macro": 0.5865497076023392,
   "recall_macro": 0.6666666666666666,
-  "f1_macro": 0.6161654612358838,
+  "f1_macro": 0.6239655743131413,
   "classification_report": {
     "High": {
-      "precision": 0.868421052631579,
+      "precision": 0.8596491228070176,
       "recall": 1.0,
-      "f1-score": 0.9295774647887324,
-      "support": 99.0
+      "f1-score": 0.9245283018867925,
+      "support": 98.0
     },
     "Low": {
-      "precision": 0.85,
+      "precision": 0.9,
       "recall": 1.0,
-      "f1-score": 0.918918918918919,
-      "support": 17.0
+      "f1-score": 0.9473684210526315,
+      "support": 18.0
     },
     "Medium": {
       "precision": 0.0,
@@ -107,15 +107,15 @@
     },
     "accuracy": 0.8656716417910447,
     "macro avg": {
-      "precision": 0.5728070175438597,
+      "precision": 0.5865497076023392,
       "recall": 0.6666666666666666,
-      "f1-score": 0.6161654612358838,
+      "f1-score": 0.6239655743131413,
       "support": 134.0
     },
     "weighted avg": {
-      "precision": 0.7494304791830322,
+      "precision": 0.749594134590207,
       "recall": 0.8656716417910447,
-      "f1-score": 0.8033566465351204,
+      "f1-score": 0.8034060086854704,
       "support": 134.0
     }
   },
@@ -127,23 +127,23 @@
     ],
     "matrix": [
       [
-        99,
+        98,
         0,
         0
       ],
       [
         0,
-        17,
+        18,
         0
       ],
       [
-        15,
-        3,
+        16,
+        2,
         0
       ]
     ]
   },
-  "trained_at": "2026-11-05T09:46:36",
+  "trained_at": "2026-11-06T09:45:19",
   "macro_average_classes": [
     "High",
     "Low",
