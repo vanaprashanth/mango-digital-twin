@@ -3,14 +3,14 @@
   "label_type": "surrogate_rule_based",
   "target": "target_irrigation_priority",
   "train_rows": 536,
-  "test_rows": 134,
+  "test_rows": 135,
   "train_date_range": [
     "2025-01-01",
     "2026-06-20"
   ],
   "test_date_range": [
     "2026-06-21",
-    "2026-11-01"
+    "2026-11-02"
   ],
   "feature_count": 54,
   "features": [
@@ -77,15 +77,15 @@
     },
     "test": {
       "High": 98,
-      "Medium": 18,
-      "Low": 18
+      "Low": 19,
+      "Medium": 18
     }
   },
-  "accuracy": 0.8656716417910447,
+  "accuracy": 0.8666666666666667,
   "balanced_accuracy": 0.6666666666666666,
-  "precision_macro": 0.5865497076023392,
+  "precision_macro": 0.5881370091896407,
   "recall_macro": 0.6666666666666666,
-  "f1_macro": 0.6239655743131413,
+  "f1_macro": 0.6248427672955975,
   "classification_report": {
     "High": {
       "precision": 0.8596491228070176,
@@ -94,10 +94,10 @@
       "support": 98.0
     },
     "Low": {
-      "precision": 0.9,
+      "precision": 0.9047619047619048,
       "recall": 1.0,
-      "f1-score": 0.9473684210526315,
-      "support": 18.0
+      "f1-score": 0.95,
+      "support": 19.0
     },
     "Medium": {
       "precision": 0.0,
@@ -105,18 +105,18 @@
       "f1-score": 0.0,
       "support": 18.0
     },
-    "accuracy": 0.8656716417910447,
+    "accuracy": 0.8666666666666667,
     "macro avg": {
-      "precision": 0.5865497076023392,
+      "precision": 0.5881370091896407,
       "recall": 0.6666666666666666,
-      "f1-score": 0.6239655743131413,
-      "support": 134.0
+      "f1-score": 0.6248427672955975,
+      "support": 135.0
     },
     "weighted avg": {
-      "precision": 0.749594134590207,
-      "recall": 0.8656716417910447,
-      "f1-score": 0.8034060086854704,
-      "support": 134.0
+      "precision": 0.7513784461152883,
+      "recall": 0.8666666666666667,
+      "f1-score": 0.8048427672955976,
+      "support": 135.0
     }
   },
   "confusion_matrix": {
@@ -133,7 +133,7 @@
       ],
       [
         0,
-        18,
+        19,
         0
       ],
       [
@@ -143,7 +143,7 @@
       ]
     ]
   },
-  "trained_at": "2026-11-06T09:45:19",
+  "trained_at": "2026-11-07T09:08:25",
   "macro_average_classes": [
     "High",
     "Low",
