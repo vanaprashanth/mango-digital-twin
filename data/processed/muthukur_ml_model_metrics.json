@@ -2,15 +2,15 @@
   "model_type": "RandomForestClassifier",
   "label_type": "surrogate_rule_based",
   "target": "target_irrigation_priority",
-  "train_rows": 536,
+  "train_rows": 537,
   "test_rows": 135,
   "train_date_range": [
     "2025-01-01",
-    "2026-06-20"
+    "2026-06-21"
   ],
   "test_date_range": [
-    "2026-06-21",
-    "2026-11-02"
+    "2026-06-22",
+    "2026-11-03"
   ],
   "feature_count": 54,
   "features": [
@@ -71,51 +71,51 @@
   ],
   "target_distribution": {
     "train": {
-      "High": 315,
+      "High": 316,
       "Low": 198,
       "Medium": 23
     },
     "test": {
-      "High": 98,
-      "Low": 19,
-      "Medium": 18
+      "High": 96,
+      "Low": 20,
+      "Medium": 19
     }
   },
-  "accuracy": 0.8666666666666667,
+  "accuracy": 0.8592592592592593,
   "balanced_accuracy": 0.6666666666666666,
-  "precision_macro": 0.5881370091896407,
+  "precision_macro": 0.5755693581780538,
   "recall_macro": 0.6666666666666666,
-  "f1_macro": 0.6248427672955975,
+  "f1_macro": 0.6177698270721527,
   "classification_report": {
     "High": {
-      "precision": 0.8596491228070176,
+      "precision": 0.8571428571428571,
       "recall": 1.0,
-      "f1-score": 0.9245283018867925,
-      "support": 98.0
+      "f1-score": 0.9230769230769231,
+      "support": 96.0
     },
     "Low": {
-      "precision": 0.9047619047619048,
+      "precision": 0.8695652173913043,
       "recall": 1.0,
-      "f1-score": 0.95,
-      "support": 19.0
+      "f1-score": 0.9302325581395349,
+      "support": 20.0
     },
     "Medium": {
       "precision": 0.0,
       "recall": 0.0,
       "f1-score": 0.0,
-      "support": 18.0
+      "support": 19.0
     },
-    "accuracy": 0.8666666666666667,
+    "accuracy": 0.8592592592592593,
     "macro avg": {
-      "precision": 0.5881370091896407,
+      "precision": 0.5755693581780538,
       "recall": 0.6666666666666666,
-      "f1-score": 0.6248427672955975,
+      "f1-score": 0.6177698270721527,
       "support": 135.0
     },
     "weighted avg": {
-      "precision": 0.7513784461152883,
-      "recall": 0.8666666666666667,
-      "f1-score": 0.8048427672955976,
+      "precision": 0.7383482861743731,
+      "recall": 0.8592592592592593,
+      "f1-score": 0.7942224872457431,
       "support": 135.0
     }
   },
@@ -127,23 +127,23 @@
     ],
     "matrix": [
       [
-        98,
+        96,
         0,
         0
       ],
       [
         0,
-        19,
+        20,
         0
       ],
       [
         16,
-        2,
+        3,
         0
       ]
     ]
   },
-  "trained_at": "2026-11-08T09:24:25",
+  "trained_at": "2026-11-09T10:10:42",
   "macro_average_classes": [
     "High",
     "Low",
