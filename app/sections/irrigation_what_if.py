@@ -324,7 +324,7 @@ def render_irrigation_what_if_page(
             y=chart_df["root_zone_depletion_mm"],
             mode="lines+markers",
             name="Actual depletion",
-            line=dict(color="#636EFA", width=2),
+            line=dict(color="#75B7E8", width=2),
             marker=dict(size=5),
         )
     )
@@ -336,7 +336,7 @@ def render_irrigation_what_if_page(
             y=[baseline_depletion],
             mode="markers",
             name=f"Current ({baseline_depletion:.1f} mm)",
-            marker=dict(size=12, color="#636EFA", symbol="diamond"),
+            marker=dict(size=12, color="#75B7E8", symbol="diamond"),
             showlegend=True,
         )
     )

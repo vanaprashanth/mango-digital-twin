@@ -28,6 +28,9 @@ from app.sections.overview_map import render_overview_map_page
 from app.sections.what_if_simulator import render_what_if_simulator_page
 from app.sections.raw_data import render_raw_data_page
 from app.sections.et0_validation import render_et0_validation_page
+from app.sections.data_sources_health import render_data_sources_health_page
+from app.navigation import DATA_SOURCES_PAGE, render_data_health_control, render_sidebar_navigation
+from app.theme import inject_theme
 from src.utils.config import get_config
 from src.utils.soil_factor import soil_factor_label
 from src.utils.pipeline_metadata import load_metadata_json
@@ -75,8 +78,10 @@ ML_TRAINING_DATASET_PATH = config.path("ml_training_dataset_csv")
 st.set_page_config(
     page_title="Mango Digital Twin",
     page_icon="🥭",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="auto",   # collapsed on mobile, open on desktop
 )
+inject_theme()
 
 
 # ---------------------------------------------------------------------
@@ -393,93 +398,6 @@ def safe_load_irrigation_advisory_data(path: Path, label: str) -> pd.DataFrame |
     return None
 
 
-def file_status(path: Path) -> dict:
-    """
-    Return a small status record for a data file: whether it exists and,
-    if so, when it was last modified. Used to render data-source badges
-    in the sidebar so it's obvious at a glance which pipeline stages have
-    actually run and how fresh each file is.
-    """
-    if not path.exists():
-        return {"exists": False, "modified": None}
-
-    modified_ts = dt.datetime.fromtimestamp(path.stat().st_mtime)
-    return {"exists": True, "modified": modified_ts}
-
-
-def render_status_badge(label: str, path: Path) -> None:
-    """Render a single data-source status badge in the sidebar."""
-    status = file_status(path)
-
-    if not status["exists"]:
-        st.sidebar.markdown(f"🔴 **{label}** — missing")
-        return
-
-    age = dt.datetime.now() - status["modified"]
-    age_hours = age.total_seconds() / 3600
-
-    if age_hours <= 48:
-        indicator = "🟢"
-    elif age_hours <= 24 * 14:
-        indicator = "🟡"
-    else:
-        indicator = "🟠"
-
-    st.sidebar.markdown(
-        f"{indicator} **{label}** — updated {status['modified'].strftime('%Y-%m-%d %H:%M')}"
-    )
-
-
-def _format_metadata_timestamp(iso_timestamp: str | None) -> str:
-    """Format an ISO-8601 UTC timestamp from the metadata JSON for display."""
-    if not iso_timestamp:
-        return "Unknown"
-    try:
-        parsed = dt.datetime.strptime(iso_timestamp, "%Y-%m-%dT%H:%M:%SZ")
-        return f"{parsed.strftime('%Y-%m-%d %H:%M')} UTC"
-    except ValueError:
-        return iso_timestamp
-
-
-def render_data_freshness_section() -> None:
-    """
-    Render the "near-real-time" data freshness summary: when the pipeline
-    last ran and how current each key data source is, read from
-    data/processed/pipeline_run_metadata.json (written by
-    src/pipeline/run_pipeline.py). Never raises -- if the metadata file is
-    missing or unreadable, shows a friendly message instead.
-    """
-    st.sidebar.subheader("Data freshness")
-
-    metadata = load_metadata_json(PIPELINE_METADATA_PATH)
-
-    if metadata is None:
-        st.sidebar.info("Run `python main.py --skip-fetch` to generate pipeline metadata.")
-        return
-
-    status = metadata.get("status", "unknown")
-    status_indicator = "🟢" if status == "success" else "🔴"
-    st.sidebar.markdown(
-        f"{status_indicator} **Last pipeline run:** "
-        f"{_format_metadata_timestamp(metadata.get('run_completed_at'))} ({metadata.get('pipeline_mode', 'unknown mode')})"
-    )
-
-    latest_dates = metadata.get("latest_dates", {})
-    freshness_rows = [
-        ("Weather risk", latest_dates.get("weather_risk_latest_date")),
-        ("Open-Meteo forecast", latest_dates.get("open_meteo_forecast_latest_date")),
-        ("Sentinel-2 observation", latest_dates.get("sentinel2_daily_latest_date")),
-        ("Phenology-aware FAO-56", latest_dates.get("fao56_phenology_water_balance_latest_date")),
-        ("Model comparison", latest_dates.get("fao56_model_comparison_latest_date")),
-    ]
-    for label, latest_date in freshness_rows:
-        st.sidebar.caption(f"{label}: {latest_date if latest_date else 'not available'}")
-
-    missing_warnings = metadata.get("missing_file_warnings", [])
-    if missing_warnings:
-        st.sidebar.warning(f"{len(missing_warnings)} expected file(s) missing — see Raw Data / status badges above.")
-
-
 # ---------------------------------------------------------------------
 # Load data (shared across all pages)
 # ---------------------------------------------------------------------
@@ -503,6 +421,7 @@ soil_df = None
 vegetation_df = None
 vegetation_timeseries_df = None
 combined_feature_df = None
+sentinel1_df = None
 
 if FORECAST_DATA_PATH.exists():
     forecast_df = safe_load_data(FORECAST_DATA_PATH, "Forecast risk")
@@ -627,67 +546,18 @@ if ET0_COMPARISON_SUMMARY_MD_PATH.exists():
 
 
 # ---------------------------------------------------------------------
-# Sidebar — navigation, study area, data source status
+# Sidebar - brand, grouped navigation, Data Sources & Health control
 # ---------------------------------------------------------------------
 
-st.sidebar.title("🥭 Mango Digital Twin")
-st.sidebar.caption(f"{config.study_area.name}")
-st.sidebar.caption(f"{config.study_area.district} district, {config.study_area.state}, {config.study_area.country}")
+st.sidebar.markdown("### 🥭 MangoTwin Intelligence")
+st.sidebar.caption(f"{config.study_area.name} · {config.study_area.district} district, {config.study_area.state}")
 
-page = st.sidebar.radio(
-    "Navigate",
-    [
-        "Overview & Map",
-        "Historical Risk",
-        "Forecast Risk",
-        "Soil Intelligence",
-        "Remote Sensing Health",
-        "Combined Intelligence",
-        "Water Balance",
-        "Mango Phenology",
-        "Phenology Water Balance",
-        "FAO-56 Model Comparison",
-        "FAO-56 Sensitivity Analysis",
-        "ET0 Validation",
-        "Irrigation Advisory",
-        "Irrigation Events",
-        "Irrigation What-If",
-        "AI/ML Advisory Preview",
-        "What-if Simulator",
-        "Raw Data",
-    ],
-)
+render_data_health_control()
+page = render_sidebar_navigation()
 
-st.sidebar.divider()
-st.sidebar.subheader("Data source status")
-render_status_badge("NASA POWER (raw)", NASA_POWER_RAW_PATH)
-render_status_badge("Open-Meteo (raw)", OPEN_METEO_RAW_PATH)
-render_status_badge("SoilGrids (raw)", SOIL_DATA_PATH)
-render_status_badge("Historical risk (processed)", DATA_PATH)
-render_status_badge("Forecast risk (processed)", FORECAST_DATA_PATH)
-render_status_badge("Sentinel-2 daily vegetation (processed)", SENTINEL2_DAILY_PATH)
-render_status_badge("Combined feature table (processed)", COMBINED_FEATURE_TABLE_PATH)
-render_status_badge("FAO-56 water balance (processed)", FAO56_WATER_BALANCE_PATH)
-render_status_badge("Mango phenology calendar (processed)", PHENOLOGY_CALENDAR_PATH)
-render_status_badge("Phenology-aware FAO-56 water balance (processed)", FAO56_PHENOLOGY_WATER_BALANCE_PATH)
-render_status_badge("FAO-56 model comparison (processed)", FAO56_MODEL_COMPARISON_CSV_PATH)
-render_status_badge("FAO-56 sensitivity analysis (processed)", FAO56_SENSITIVITY_CSV_PATH)
-render_status_badge("Irrigation advisory (processed)", FORECAST_AWARE_ADVISORY_PATH)
-render_status_badge("ET0 comparison (processed)", ET0_COMPARISON_CSV_PATH)
-render_status_badge("Irrigation events (manual)", IRRIGATION_EVENTS_PATH)
-render_status_badge("Interpolated-Kc FAO-56 water balance (processed)", FAO56_INTERPOLATED_KC_PATH)
-st.sidebar.markdown("🟢 **ML Model: Available**" if ML_MODEL_PATH.exists() else "🔴 **ML Model: Missing**")
-
-st.sidebar.divider()
-render_data_freshness_section()
-
-st.sidebar.divider()
 st.sidebar.caption(
-    "Future prediction = Open-Meteo weather forecast + risk rules, not a trained ML model yet."
-)
-st.sidebar.caption(
-    "This is a near-real-time digital twin: forecast weather updates often, Sentinel-2 every few "
-    "days, NASA POWER historical data can lag, and SoilGrids is mostly static."
+    "Near-real-time digital twin: forecast weather updates often, Sentinel-2 every few days, "
+    "NASA POWER can lag, SoilGrids is mostly static."
 )
 
 
@@ -696,7 +566,14 @@ st.sidebar.caption(
 # =======================================================================
 
 if page == "Overview & Map":
-    render_overview_map_page(config, latest, has_soil_adjusted_irrigation, combined_feature_df=combined_feature_df)
+    render_overview_map_page(
+        config, latest, has_soil_adjusted_irrigation,
+        combined_feature_df=combined_feature_df,
+        fao56_df=fao56_interpolated_kc_df,
+        advisory_df=irrigation_advisory_df,
+        sentinel1_df=sentinel1_df,
+        vegetation_df=vegetation_df,
+    )
 
 
 # =======================================================================
@@ -845,3 +722,11 @@ elif page == "What-if Simulator":
 
 elif page == "Raw Data":
     render_raw_data_page(df, forecast_df, soil_df, vegetation_df, phenology_df, fao56_phenology_water_balance_df)
+
+
+# =======================================================================
+# PAGE: Data Sources & Health
+# =======================================================================
+
+elif page == DATA_SOURCES_PAGE:
+    render_data_sources_health_page(config, PIPELINE_METADATA_PATH)

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 from app.sections.freshness import show_freshness_indicator
+from app.theme import PALETTE, esc, kpi_card, page_header, section_header, status_pill
 
 
 def _risk_color(level: str) -> str:
@@ -16,98 +18,169 @@ def _risk_color(level: str) -> str:
         return "\U0001f7e2 Low"
 
 
-def render_overview_map_page(
-    config,
-    latest: "pd.Series",
-    has_soil_adjusted_irrigation: bool,
-    combined_feature_df: "pd.DataFrame | None" = None,
-) -> None:
-    """Render the Overview & Map dashboard page."""
+def build_study_area_map(latitude: float, longitude: float, theme_base: str | None = None):
+    """Build the Study Area map figure (Plotly >= 5.24 ``scatter_map`` API).
 
-    st.title("\U0001f96d Sensor-Free Mango Digital Twin")
-    show_freshness_indicator(label="Overview", staleness_warning_days=0)
-    st.caption(f"{config.study_area.name}, {config.study_area.district} district, {config.study_area.state}")
+    carto-darkmatter is dark, carto-positron is light; both are token-free.
+    Marker colour: "#ff4444" on dark tiles, "red" on light tiles.
+    """
+    map_df = pd.DataFrame({"lat": [latitude], "lon": [longitude], "location": ["Study orchard"]})
+    dark = theme_base == "dark"
+    map_style = "carto-darkmatter" if dark else "carto-positron"
+    marker_color = "#ff4444" if dark else "red"
 
-    st.subheader("Latest Digital Twin Status")
-
-    col1, col2, col3, col4, col5 = st.columns(5)
-
-    with col1:
-        st.metric(label="Latest valid date", value=latest["date"].strftime("%Y-%m-%d"))
-
-    with col2:
-        st.metric(label="Irrigation risk (weather only)", value=_risk_color(latest["irrigation_risk_level"]))
-
-    with col3:
-        if has_soil_adjusted_irrigation:
-            st.metric(label="Irrigation risk (soil-adjusted)", value=_risk_color(latest["soil_adjusted_irrigation_risk_level"]))
-        else:
-            st.metric(label="Irrigation risk (soil-adjusted)", value="N/A")
-
-    with col4:
-        st.metric(label="Heat stress risk", value=_risk_color(latest["heat_stress_risk_level"]))
-
-    with col5:
-        st.metric(label="Disease risk", value=_risk_color(latest["disease_risk_level"]))
-
-    st.divider()
-
-    # -----------------------------------------------------------------------
-    # Study Area Map
-    # -----------------------------------------------------------------------
-    # Design decision: the map is intentionally zoomed in to the study area in
-    # Chittoor / Andhra Pradesh (zoom 8).  At this zoom level the viewport covers
-    # roughly southern Andhra Pradesh, Karnataka, and Tamil Nadu — the disputed
-    # northern borders (~2 000 km north) are entirely off-screen.
-    #
-    # The basemap style is "carto-positron", a minimal neutral tile layer that
-    # renders roads and terrain without prominently labelling or drawing
-    # administrative/political boundaries.  This dashboard does not use the
-    # basemap as an authoritative source of any political boundary.
-    # -----------------------------------------------------------------------
-
-    st.subheader("Study Area Map")
-
-    map_df = pd.DataFrame(
-        {"lat": [config.latitude], "lon": [config.longitude], "location": ["Study orchard"]}
-    )
-
-    # Detect Streamlit theme and pick the appropriate tile style.
-    # carto-darkmatter is dark, carto-positron is light — both are token-free.
-    try:
-        _theme_base = st.get_option("theme.base")
-    except Exception:
-        _theme_base = None
-    _map_style = "carto-darkmatter" if _theme_base == "dark" else "carto-positron"
-    # Marker colour stays red on the dark basemap (visible against dark tiles);
-    # use a brighter orange-red on light tiles for consistency.
-    _marker_color = "#ff4444" if _theme_base == "dark" else "red"
-
-    map_fig = px.scatter_mapbox(
+    fig = px.scatter_map(
         map_df,
         lat="lat",
         lon="lon",
         hover_name="location",
         zoom=8,
         height=450,
-        center={"lat": config.latitude, "lon": config.longitude},
+        center={"lat": latitude, "lon": longitude},
     )
-    map_fig.update_traces(marker=dict(size=14, color=_marker_color))
-    map_fig.update_layout(
-        mapbox_style=_map_style,
+    fig.update_traces(marker=dict(size=14, color=marker_color))
+    fig.update_layout(
+        map_style=map_style,
         margin={"r": 0, "t": 0, "l": 0, "b": 0},
     )
-    st.plotly_chart(map_fig, use_container_width=True, config={"scrollZoom": True})
+    return fig
+
+
+_STATE_RANK = {"Fresh": 0, "Aging": 1, "Stale": 2, "Unknown": 3, "Missing": 4}
+
+
+def satellite_freshness_summary(records: list[dict]) -> tuple[str, str]:
+    """(state, note) for the Satellite freshness KPI from the Data Sources records.
+
+    Sentinel-2 and Sentinel-1 keep their own source-specific states; the KPI shows the
+    better of the two (either sensor being recent means usable satellite context).
+    """
+    by_key = {r["key"]: r for r in records}
+    parts, states = [], []
+    for key, label in (("sentinel2", "S2"), ("sentinel1", "S1")):
+        r = by_key.get(key)
+        if r is None:
+            continue
+        age = f"{r['age_days']}d" if r.get("age_days") is not None else r["state"].lower()
+        parts.append(f"{label} {age}")
+        states.append(r["state"])
+    if not states:
+        return "Unknown", "No satellite sources configured"
+    return min(states, key=lambda x: _STATE_RANK.get(x, 9)), " \u00b7 ".join(parts)
+
+
+def _level_state(level) -> "str | None":
+    return level if level in ("Low", "Medium", "High") else None
+
+
+def water_balance_trend_figure(fao56_df: "pd.DataFrame | None", days: int = 120):
+    """Root-zone depletion trend with RAW / TAW reference lines; None if data unusable."""
+    if fao56_df is None or fao56_df.empty or not {"date", "root_zone_depletion_mm"} <= set(fao56_df.columns):
+        return None
+    d = fao56_df.sort_values("date").tail(days)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=d["date"], y=d["root_zone_depletion_mm"], mode="lines", name="Root-zone depletion",
+        line=dict(color=PALETTE["blue"], width=2),
+        hovertemplate="%{x|%Y-%m-%d}<br>Depletion: %{y:.1f} mm<extra></extra>",
+    ))
+    for col, label, colour in (("raw_mm", "RAW (stress onset)", PALETTE["gold"]),
+                               ("taw_mm", "TAW (total available water)", PALETTE["red"])):
+        if col in d.columns and d[col].notna().any():
+            fig.add_hline(y=float(d[col].dropna().iloc[-1]), line_dash="dash", line_color=colour,
+                          annotation_text=label, annotation_position="top left")
+    fig.update_layout(height=320, yaxis_title="Depletion (mm)", xaxis_title=None,
+                      title="FAO-56 root-zone depletion (last %d days)" % len(d), showlegend=False)
+    return fig
+
+
+def render_overview_map_page(
+    config,
+    latest: "pd.Series",
+    has_soil_adjusted_irrigation: bool,
+    combined_feature_df: "pd.DataFrame | None" = None,
+    fao56_df: "pd.DataFrame | None" = None,
+    advisory_df: "pd.DataFrame | None" = None,
+    sentinel1_df: "pd.DataFrame | None" = None,
+    vegetation_df: "pd.DataFrame | None" = None,
+) -> None:
+    """Render the Overview & Map dashboard landing page."""
+    from app.sections.data_sources_health import evaluate_all
+
+    page_header("MangoTwin Intelligence", "Sensor-Free Mango Orchard Digital Twin",
+                "Muthukur / Peddapanjani, Andhra Pradesh")
+    show_freshness_indicator(label="Overview", staleness_warning_days=0)
+    st.caption(f"{config.study_area.name}, {config.study_area.district} district, {config.study_area.state}")
+
+    try:
+        records = evaluate_all(config)
+    except Exception:
+        records = []
+
+    # ---- KPI cards ------------------------------------------------------
+    irr_level = (latest["soil_adjusted_irrigation_risk_level"] if has_soil_adjusted_irrigation
+                 else latest["irrigation_risk_level"])
+    irr_note = "Weather-based, soil-adjusted" if has_soil_adjusted_irrigation else "Weather-based"
+
+    ws_level, ws_note = "N/A", "FAO-56 water balance unavailable"
+    if fao56_df is not None and not fao56_df.empty and "water_stress_level" in fao56_df.columns:
+        row = fao56_df.sort_values("date").iloc[-1]
+        ws_level = str(row["water_stress_level"])
+        ks = row.get("ks")
+        ws_note = "FAO-56 Ks " + (f"{float(ks):.2f}" if pd.notna(ks) else "n/a") + f" \u00b7 {row['date']:%Y-%m-%d}"
+
+    sat_state, sat_note = satellite_freshness_summary(records)
+
+    cards = [
+        ("Latest valid data date", latest["date"].strftime("%Y-%m-%d"), "Historical weather", None),
+        ("Irrigation risk", str(irr_level), irr_note, _level_state(irr_level)),
+        ("Water stress", ws_level, ws_note, _level_state(ws_level)),
+        ("Disease risk", str(latest["disease_risk_level"]), "Weather-based", _level_state(latest["disease_risk_level"])),
+        ("Satellite freshness", sat_state, sat_note, sat_state if sat_state in ("Fresh", "Aging", "Stale") else None),
+    ]
+    for col, (label, value, note, state) in zip(st.columns(5), cards):
+        col.markdown(kpi_card(label, value, note, state), unsafe_allow_html=True)
+    st.caption(
+        "Irrigation risk is a weather-rule score; water stress is the separate FAO-56 soil-water "
+        "assessment (Ks from root-zone depletion). They can differ and are not interchangeable."
+    )
+
+    st.write("")
+
+    # ---- Map + remote sensing summary ----------------------------------
+    # The map is intentionally zoomed to the study area (zoom 8); disputed northern borders are
+    # off-screen and the carto basemap is not an authoritative boundary source.
+    map_col, rs_col = st.columns([3, 2])
+    with map_col:
+        section_header("Study Area Map")
+        try:
+            _theme_base = st.get_option("theme.base")
+        except Exception:
+            _theme_base = None
+        map_fig = build_study_area_map(config.latitude, config.longitude, _theme_base)
+        st.plotly_chart(map_fig, use_container_width=True, config={"scrollZoom": True})
+        st.caption(
+            f"\U0001f4cd {config.study_area.name}, {config.study_area.district} district, "
+            f"{config.study_area.state}, {config.study_area.country} "
+            f"\u2014 {config.latitude}\u00b0 N, {config.longitude}\u00b0 E"
+        )
+    with rs_col:
+        section_header("Remote Sensing Freshness Summary")
+        for r in records:
+            if r["key"] in ("sentinel2", "sentinel1"):
+                latest_obs = r["latest_observation"].isoformat() if r["latest_observation"] else "n/a"
+                st.markdown(
+                    f'<div class="mt-card"><div style="display:flex;justify-content:space-between">'
+                    f'<h4>{esc(r["name"])}</h4>{status_pill(r["state"])}</div>'
+                    f'<div class="mt-meta">Latest observation: {esc(latest_obs)}<br>{esc(r["detail"])}</div></div>',
+                    unsafe_allow_html=True,
+                )
+        st.caption("Sentinel-2 is optical and can be stale in cloudy periods; Sentinel-1 SAR is a "
+                   "radar proxy, not NDVI or calibrated soil moisture.")
 
     st.caption(
-        f"\U0001f4cd {config.study_area.name}, {config.study_area.district} district, "
-        f"{config.study_area.state}, {config.study_area.country} "
-        f"\u2014 {config.latitude}\u00b0 N, {config.longitude}\u00b0 E"
-    )
-    st.caption(
-        "Map is focused on the study orchard location in Andhra Pradesh. "
-        "Basemap boundary lines are provided by the tile provider and are not used "
-        "as the authoritative boundary source."
+        "Map is focused on the study orchard location in Andhra Pradesh. Basemap boundary lines "
+        "are provided by the tile provider and are not used as the authoritative boundary source."
     )
 
     with st.expander("India boundary layer \u2014 planned improvement", expanded=False):
@@ -121,6 +194,49 @@ def render_overview_map_page(
             "third-party basemap tile provider is used as the authoritative source of "
             "India\u2019s boundaries, including Jammu & Kashmir and other sensitive regions."
         )
+
+    st.divider()
+
+    # ---- Water balance trend + latest advisory --------------------------
+    trend_col, adv_col = st.columns([3, 2])
+    with trend_col:
+        section_header("Water Balance Trend")
+        fig = water_balance_trend_figure(fao56_df)
+        if fig is None:
+            st.info("FAO-56 water-balance data not available. Run `python main.py` to generate it.")
+        else:
+            st.plotly_chart(fig, use_container_width=True)
+    with adv_col:
+        section_header("Latest Irrigation Advisory")
+        if advisory_df is None or advisory_df.empty:
+            st.info("Irrigation advisory not available. Run `python main.py --skip-fetch` to generate it.")
+        else:
+            adv = advisory_df.iloc[0]
+            pr = str(adv.get("advisory_priority", "Unknown"))
+            pill = status_pill(pr if pr in ("Low", "Medium", "High") else "Unknown", "Priority: " + pr)
+            st.markdown(
+                f'<div class="mt-card"><div style="display:flex;justify-content:space-between;gap:.5rem">'
+                f'<h4>{esc(adv.get("advisory_action", "n/a"))}</h4>{pill}</div>'
+                f'<div class="mt-meta">{esc(adv.get("advisory_reason", ""))}<br>'
+                f'FAO-56 status date: {esc(adv.get("current_date", "n/a"))}</div></div>',
+                unsafe_allow_html=True,
+            )
+            st.caption("FAO-56 + forecast advisory. Open the Irrigation Advisory page for full limitations.")
+
+    st.divider()
+
+    # ---- Recent data refresh summary -----------------------------------
+    section_header("Recent Data Refresh Summary",
+                   "Source-specific freshness; see Data Sources & Health for detail.")
+    if records:
+        summary = pd.DataFrame([{
+            "Source": r["name"], "State": r["state"],
+            "Latest observation": r["latest_observation"].isoformat() if r["latest_observation"] else "n/a",
+            "Age (days)": r["age_days"],
+        } for r in records])
+        st.dataframe(summary, use_container_width=True, hide_index=True)
+    else:
+        st.info("Source status unavailable.")
 
     st.divider()
 
@@ -140,8 +256,19 @@ def render_overview_map_page(
     with weather_col4:
         st.metric(label="7-day rainfall", value=f"{latest['rainfall_7day_mm']:.2f} mm")
 
+    st.metric(label="Heat stress risk", value=_risk_color(latest["heat_stress_risk_level"]))
+
     st.divider()
 
+    _render_remote_sensing_freshness(combined_feature_df)
+
+    st.divider()
+
+    _render_weather_recommendations(latest, has_soil_adjusted_irrigation)
+
+
+def _render_remote_sensing_freshness(combined_feature_df: "pd.DataFrame | None") -> None:
+    """Detailed Sentinel-2 / Sentinel-1 freshness from the combined feature table (unchanged logic)."""
     # -----------------------------------------------------------------------
     # Remote Sensing Freshness
     # -----------------------------------------------------------------------
@@ -254,9 +381,10 @@ def render_overview_map_page(
             "field-calibrated soil moisture."
         )
 
-    st.divider()
 
-    st.subheader("Latest Recommendation")
+def _render_weather_recommendations(latest: "pd.Series", has_soil_adjusted_irrigation: bool) -> None:
+    """Weather-rule recommendations (distinct from the FAO-56 advisory above; unchanged logic)."""
+    st.subheader("Weather-Based Recommendation")
 
     recommendations = []
 

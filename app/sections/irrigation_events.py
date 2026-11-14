@@ -479,7 +479,7 @@ def _render_impact_summary(
                 y=chart_fao56["root_zone_depletion_mm"],
                 mode="lines",
                 name="Root-zone depletion (mm)",
-                line=dict(color="#636EFA", width=2),
+                line=dict(color="#75B7E8", width=2),
                 yaxis="y1",
             )
         )

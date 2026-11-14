@@ -15,6 +15,8 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from app.theme import PALETTE, esc
+
 SURROGATE_WARNING = (
     "This model is trained on surrogate FAO-56/rule-based labels, "
     "not field-observed irrigation outcomes."
@@ -156,11 +158,14 @@ def render_ml_advisory_preview_page(
     importance_path: Path,
     dataset_path: Path,
 ) -> None:
-    st.title("AI/ML Advisory Preview")
-    st.info(SURROGATE_WARNING)
-    st.caption(
-        "Surrogate-label ML prototype. Read-only: no predictions are made on this page."
+    st.markdown(
+        '<div class="mt-ai"><span class="mt-ai-badge">EXPERIMENTAL · SURROGATE LABELS</span>'
+        '<div class="mt-title" style="margin-top:.5rem">AI/ML Advisory Preview</div>'
+        f'<div class="mt-sub">{esc(SURROGATE_WARNING)} Read-only: no predictions are made on this page, '
+        'and it is separate from the FAO-56 irrigation advisory.</div></div>',
+        unsafe_allow_html=True,
     )
+    st.info(SURROGATE_WARNING)
 
     # 1. Artifact status
     st.subheader("Model status")
@@ -212,6 +217,7 @@ def render_ml_advisory_preview_page(
         fig = px.bar(
             imp.sort_values("importance"), x="importance", y="feature", orientation="h",
             title="Top 15 features (RandomForest impurity importance)",
+            color_discrete_sequence=[PALETTE["purple"]],
         )
         fig.update_layout(yaxis_title=None, height=480)
         st.plotly_chart(fig, use_container_width=True)
@@ -232,5 +238,7 @@ def render_ml_advisory_preview_page(
 
     # 5. Limitations
     st.subheader("Limitations")
+    st.warning("No field-observed ground truth exists. Metrics show how well the model reproduces "
+               "rule-based labels, not operational predictive reliability.")
     for item in LIMITATIONS:
         st.markdown(f"- {item}")

@@ -1,0 +1,17 @@
+# Shared dashboard theme (MangoTwin Intelligence). Dark forest / navy surfaces.
+# Colours mirror app/theme.py PALETTE; keep the two in sync.
+[theme]
+base = "dark"
+primaryColor = "#76D6A0"
+backgroundColor = "#101A18"
+secondaryBackgroundColor = "#20332A"
+textColor = "#F2F8F3"
+font = "sans serif"
+chartCategoricalColors = ["#76D6A0", "#F1BF66", "#A99CF7", "#75B7E8", "#E5736B", "#9BCB6A"]
+
+[theme.sidebar]
+backgroundColor = "#15221D"
+secondaryBackgroundColor = "#20332A"
+
+[client]
+toolbarMode = "minimal"
