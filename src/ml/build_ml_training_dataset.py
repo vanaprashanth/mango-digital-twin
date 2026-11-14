@@ -36,7 +36,10 @@ OUTPUT
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
+from datetime import date, datetime
 from pathlib import Path
 
 import numpy as np
@@ -73,6 +76,9 @@ _FAO_COLUMNS = [
     "irrigation_mm", "water_input_mm", "root_zone_depletion_mm",
     "taw_mm", "raw_mm", "ks", "water_stress_level",
 ]
+
+# A date is only eligible if these observed weather values exist.
+CORE_WEATHER_COLUMNS = ["temperature_avg_c", "rainfall_mm"]
 
 # Free-form identifier/text columns that are not model features.
 _DROP_FEATURE_COLUMNS = ["data_source", "sentinel2_date", "sentinel1_date"]
@@ -184,7 +190,20 @@ def build_dataset_frame(
     if "water_input_mm" not in fao.columns:
         fao["water_input_mm"] = np.nan
 
-    df = feat.merge(fao, on="date", how="left")
+    # Eligible dates: present in BOTH the feature table and the FAO-56 output,
+    # with real core weather values. Nothing is padded to today's date and no
+    # unavailable observation is invented.
+    n_before = len(feat)
+    df = feat.merge(fao, on="date", how="inner")
+    core = [c for c in CORE_WEATHER_COLUMNS if c in df.columns]
+    if core:
+        df = df.dropna(subset=core)
+    dropped = n_before - len(df)
+    if dropped:
+        log.warning(
+            "ML dataset: %d feature-table date(s) not eligible (no FAO-56 row or missing core "
+            "weather) were left out.", dropped,
+        )
     if "interpolated_kc" in df.columns:
         df["kc"] = df["interpolated_kc"]
 
@@ -227,30 +246,213 @@ def summarize_dataset(df: pd.DataFrame) -> dict:
     }
 
 
-def build_ml_training_dataset(config=None) -> bool:
-    """Build and write the ML training dataset. Returns True on success."""
+# ---------------------------------------------------------------------------
+# Freshness metadata and content-based rebuild detection
+# ---------------------------------------------------------------------------
+
+LABEL_WARNING = (
+    "target_* columns are surrogate labels from FAO-56/rule-based advisory logic, "
+    "NOT field-validated observations."
+)
+
+
+def _latest_valid_date(df: pd.DataFrame | None) -> date | None:
+    if df is None or df.empty or "date" not in df.columns:
+        return None
+    core = [c for c in CORE_WEATHER_COLUMNS if c in df.columns]
+    d = df.dropna(subset=core) if core else df
+    d = pd.to_datetime(d["date"], errors="coerce").dropna()
+    return d.max().date() if len(d) else None
+
+
+def eligible_latest_date(features: pd.DataFrame | None, fao56: pd.DataFrame | None) -> date | None:
+    """Newest date present in both inputs with valid core weather (None if no overlap)."""
+    if features is None or fao56 is None or features.empty or fao56.empty:
+        return None
+    f = features.copy()
+    f["date"] = pd.to_datetime(f["date"], errors="coerce")
+    core = [c for c in CORE_WEATHER_COLUMNS if c in f.columns]
+    if core:
+        f = f.dropna(subset=core)
+    common = set(f["date"].dropna()) & set(pd.to_datetime(fao56["date"], errors="coerce").dropna())
+    return max(common).date() if common else None
+
+
+def compute_freshness(
+    upstream_latest: date | None,
+    dataset_latest: date | None,
+    rows: int = 0,
+    today: date | None = None,
+) -> dict:
+    """
+    Freshness of the ML dataset relative to the newest ELIGIBLE upstream date.
+
+    lag_days_vs_upstream  = upstream_latest - dataset_latest (0 = current)
+    age_days_vs_today     = today - dataset_latest (informational only; the dataset is
+                            never extended toward today)
+    status: current | behind | no_dataset | no_upstream
+    """
+    today = today or date.today()
+    out = {
+        "upstream_latest_eligible_date": upstream_latest.isoformat() if upstream_latest else None,
+        "dataset_latest_date": dataset_latest.isoformat() if dataset_latest else None,
+        "row_count": int(rows),
+        "lag_days_vs_upstream": None,
+        "age_days_vs_today": (today - dataset_latest).days if dataset_latest else None,
+    }
+    if upstream_latest is None:
+        out["status"] = "no_upstream"
+    elif dataset_latest is None:
+        out["status"] = "no_dataset"
+    else:
+        lag = (upstream_latest - dataset_latest).days
+        out["lag_days_vs_upstream"] = lag
+        out["status"] = "current" if lag <= 0 else "behind"
+    return out
+
+
+def input_fingerprints(paths: dict[str, Path]) -> dict:
+    """SHA-256 + size per input file (None for files that do not exist)."""
+    out = {}
+    for name, p in paths.items():
+        p = Path(p)
+        if p.exists():
+            out[name] = {"sha256": hashlib.sha256(p.read_bytes()).hexdigest(), "size": p.stat().st_size}
+        else:
+            out[name] = None
+    return out
+
+
+def read_dataset_metadata(path: Path) -> dict | None:
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def dataset_is_current(out_path: Path, meta_path: Path, fingerprints: dict) -> bool:
+    """True only if the dataset and its metadata exist and every input is byte-identical."""
+    if not Path(out_path).exists():
+        return False
+    meta = read_dataset_metadata(meta_path)
+    return bool(meta and meta.get("inputs") == fingerprints)
+
+
+def _log_freshness(fr: dict, prefix: str) -> None:
+    msg = (
+        f"{prefix}: upstream latest eligible date={fr['upstream_latest_eligible_date']}, "
+        f"dataset latest date={fr['dataset_latest_date']}, rows={fr['row_count']}, "
+        f"lag_vs_upstream={fr['lag_days_vs_upstream']}d, age_vs_today={fr['age_days_vs_today']}d, "
+        f"status={fr['status']}"
+    )
+    if fr["status"] in ("behind", "no_dataset", "no_upstream"):
+        log.warning(msg)
+        print(f">>> WARNING {msg}")
+    else:
+        log.info(msg)
+        print(f">>> {msg}")
+
+
+def build_ml_training_dataset(config=None, force: bool = False, today: date | None = None) -> bool:
+    """
+    Build and write the ML training dataset (and its freshness metadata).
+
+    Returns True on success (including a clean "inputs unchanged, skipped"),
+    False if required inputs are missing. A previously built dataset is left
+    untouched in that case and its staleness is logged.
+    """
     config = config or get_config()
     feat_path = config.path("combined_feature_table_csv")
     fao_path = config.path("fao56_interpolated_kc_water_balance_csv")
     out_path = config.path("ml_training_dataset_csv")
+    meta_path = config.path("ml_training_dataset_metadata_json")
+    fc_path = config.path("forecast_risk_csv")
+    events_path = config.path("irrigation_events_csv")
 
-    for p in (feat_path, fao_path):
-        if not p.exists():
+    missing = [p for p in (feat_path, fao_path) if not p.exists()]
+    if missing:
+        for p in missing:
             print(f"\nMissing required input: {p}")
-            return False
+        log.warning("ML dataset not rebuilt: missing required input(s): %s", [str(p) for p in missing])
+        prior = read_dataset_metadata(meta_path)
+        if prior and out_path.exists():
+            log.warning("Keeping existing ML dataset (latest date %s); it is not being refreshed.",
+                        prior.get("dataset_latest_date"))
+        return False
+
+    fingerprints = input_fingerprints({
+        "combined_feature_table": feat_path,
+        "fao56_interpolated_kc": fao_path,
+        "forecast_risk": fc_path,
+        "irrigation_events": events_path,
+    })
 
     features = _read_dated_csv(feat_path)
     fao56 = _read_dated_csv(fao_path)
+    upstream_latest = eligible_latest_date(features, fao56)
 
-    fc_path = config.path("forecast_risk_csv")
+    if not force and dataset_is_current(out_path, meta_path, fingerprints):
+        meta = read_dataset_metadata(meta_path) or {}
+        latest = meta.get("dataset_latest_date")
+        fr = compute_freshness(
+            upstream_latest, date.fromisoformat(latest) if latest else None,
+            meta.get("row_count", 0), today,
+        )
+        print(">>> ML training dataset unchanged (all input files identical); rebuild skipped.")
+        _log_freshness(fr, "ML dataset freshness (skipped rebuild)")
+        return True
+
+    # Staleness of whatever is on disk BEFORE rebuilding (e.g. a gitignored local copy).
+    prior = read_dataset_metadata(meta_path)
+    if out_path.exists():
+        try:
+            prev_dates = pd.to_datetime(pd.read_csv(out_path, usecols=["date"])["date"], errors="coerce").dropna()
+            prev_latest = prev_dates.max().date() if len(prev_dates) else None
+            prev_rows = len(prev_dates)
+        except Exception:
+            prev_latest, prev_rows = None, 0
+        _log_freshness(compute_freshness(upstream_latest, prev_latest, prev_rows, today),
+                       "ML dataset freshness (before rebuild)")
+
     forecast = _read_dated_csv(fc_path) if fc_path.exists() else None
-    events = load_irrigation_events(config.path("irrigation_events_csv"))
+    events = load_irrigation_events(events_path)
 
     df = build_dataset_frame(features, fao56, events, forecast)
+    if df.empty:
+        print("\nNo eligible dates after joining the feature table and FAO-56 output; dataset not written.")
+        log.warning("ML dataset not written: no eligible dates")
+        return False
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_path, index=False)
 
     s = summarize_dataset(df)
+    dataset_latest = date.fromisoformat(s["date_max"])
+    fr = compute_freshness(upstream_latest, dataset_latest, s["row_count"], today)
+    meta = {
+        "built_at": datetime.now().isoformat(timespec="seconds"),
+        "label_type": "surrogate_rule_based",
+        "warning": LABEL_WARNING,
+        "dataset_cutoff_date": s["date_max"],
+        "dataset_latest_date": s["date_max"],
+        "date_range": [s["date_min"], s["date_max"]],
+        "row_count": s["row_count"],
+        "feature_count": s["feature_count"],
+        "target_distribution": s["target_distribution"],
+        "per_class_support": s["target_distribution"].get("target_irrigation_priority", {}),
+        "upstream": {
+            "feature_table_latest_date": (_latest_valid_date(features).isoformat()
+                                          if _latest_valid_date(features) else None),
+            "fao56_latest_date": (_latest_valid_date(fao56).isoformat()
+                                  if _latest_valid_date(fao56) else None),
+            "eligible_latest_date": fr["upstream_latest_eligible_date"],
+        },
+        "freshness": fr,
+        "inputs": fingerprints,
+    }
+    meta_path.write_text(json.dumps(meta, indent=2, default=str), encoding="utf-8")
+
     log.info(
         "ML training dataset: %d rows, %s to %s, %d features -> %s",
         s["row_count"], s["date_min"], s["date_max"], s["feature_count"], out_path,
@@ -264,10 +466,10 @@ def build_ml_training_dataset(config=None) -> bool:
     if s["missing_values"]:
         top = sorted(s["missing_values"].items(), key=lambda kv: -kv[1])[:10]
         print(">>> Columns with missing values (top 10): " + ", ".join(f"{c}={n}" for c, n in top))
-    print(">>> NOTE: target_* columns are surrogate labels from FAO-56/rule-based "
-          "advisory logic, NOT field-validated.")
+    _log_freshness(fr, "ML dataset freshness (after rebuild)")
+    print(f">>> NOTE: {LABEL_WARNING}")
     return True
 
 
 if __name__ == "__main__":
-    sys.exit(0 if build_ml_training_dataset() else 1)
+    sys.exit(0 if build_ml_training_dataset(force="--force" in sys.argv) else 1)

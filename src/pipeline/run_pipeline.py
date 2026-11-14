@@ -90,7 +90,6 @@ from src.water_balance import fao56_interpolated_kc_water_balance as interpolate
 from src.validation import fao56_sensitivity_analysis as sensitivity_analysis_script
 from src.validation import compare_et0_openmeteo_vs_fao56 as et0_comparison_script
 from src.ml import build_ml_training_dataset as ml_dataset_script
-from src.ml import train_irrigation_priority_model as ml_model_script
 from src.utils.config import get_config
 from src.utils.logger import get_logger
 from src.utils.pipeline_metadata import (
@@ -188,6 +187,11 @@ class FreshnessAwareStep:
     output_keys: list[str]
 
 
+# NOTE: model training is deliberately NOT a daily step. Retraining on every
+# data refresh would silently replace the published (versioned) evaluation
+# metrics. Run `python src/ml/train_irrigation_priority_model.py` and
+# `python src/ml/backtest_irrigation_priority_model.py` deliberately instead.
+#
 # Dependency order matters here: each step's inputs must already be
 # produced by an earlier step in this list (or already cached on disk from
 # a previous run).
@@ -261,16 +265,6 @@ FRESHNESS_AWARE_STEPS = [
             "forecast_aware_irrigation_advisory_csv",
         ],
         output_keys=["ml_training_dataset_csv"],
-    ),
-    FreshnessAwareStep(
-        name="ML irrigation priority model (surrogate-label prototype)",
-        build_fn=ml_model_script.train_irrigation_priority_model,
-        input_keys=["ml_training_dataset_csv"],
-        output_keys=[
-            "irrigation_priority_model_path",
-            "ml_model_metrics_json",
-            "ml_feature_importance_csv",
-        ],
     ),
     FreshnessAwareStep(
         name="ET0 source comparison (Open-Meteo vs FAO-56)",
