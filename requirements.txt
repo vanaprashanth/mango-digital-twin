@@ -4,7 +4,7 @@ numpy
 requests
 pyyaml
 streamlit
-plotly
+plotly>=5.24
 scikit-learn
 joblib
 
