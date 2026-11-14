@@ -1,0 +1,92 @@
+name: ML Training and Evaluation
+
+# Manual, review-only evaluation of the surrogate-label irrigation-priority
+# prototype. It does NOT commit or push anything and does NOT promote metrics:
+# results are uploaded as workflow artifacts for human review. Published
+# dashboard metrics on master change only through an explicit, reviewed commit.
+#
+# Labels are surrogate (FAO-56 / rule-based), not field-validated.
+# No GEE credentials or weather/Earth Engine refresh are used: the dataset is
+# built from the upstream snapshots already committed to the repository.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ml-training-evaluation
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify upstream data is available
+        # Fails with a clear message if the committed feature table / FAO-56
+        # output is missing or empty. No stale or invented fallback is used.
+        run: python -m src.ml.evaluation_manifest check
+
+      - name: Build ML training dataset
+        # --force: always rebuild from the committed snapshots in this clean runner.
+        run: python -m src.ml.build_ml_training_dataset --force
+
+      - name: Train baseline model
+        # The model binary stays temporary on the runner and is never uploaded.
+        run: python -m src.ml.train_irrigation_priority_model
+
+      - name: Run chronological expanding-window backtest
+        run: python -m src.ml.backtest_irrigation_priority_model
+
+      - name: Run label-quality audit
+        run: python -m src.ml.audit_label_quality
+
+      - name: Write evaluation manifest
+        run: python -m src.ml.evaluation_manifest manifest data/processed/muthukur_ml_evaluation_manifest.json
+
+      - name: Gather evaluation artifacts
+        run: |
+          mkdir -p ml_evaluation_artifacts
+          for f in \
+            data/processed/muthukur_ml_model_metrics.json \
+            data/processed/muthukur_ml_feature_importance.csv \
+            data/processed/muthukur_ml_backtest_folds.csv \
+            data/processed/muthukur_ml_backtest_summary.json \
+            data/processed/muthukur_ml_label_audit_summary.json \
+            data/processed/muthukur_ml_training_dataset_metadata.json \
+            data/processed/muthukur_ml_evaluation_manifest.json
+          do
+            if [ -f "$f" ]; then
+              cp "$f" ml_evaluation_artifacts/
+            else
+              echo "::warning::Expected evaluation artifact not found: $f"
+            fi
+          done
+          ls -l ml_evaluation_artifacts
+
+      - name: Upload evaluation artifacts
+        # Review-only. The full training dataset and the model binary are
+        # deliberately NOT uploaded.
+        uses: actions/upload-artifact@v4
+        with:
+          name: ml-evaluation-${{ github.run_id }}
+          path: ml_evaluation_artifacts/
+          if-no-files-found: error
+          retention-days: 14
