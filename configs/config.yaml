@@ -135,6 +135,9 @@ paths:
   irrigation_priority_model_path: "models/irrigation_priority_model.joblib"
   ml_model_metrics_json: "data/processed/muthukur_ml_model_metrics.json"
   ml_feature_importance_csv: "data/processed/muthukur_ml_feature_importance.csv"
+  ml_backtest_folds_csv: "data/processed/muthukur_ml_backtest_folds.csv"
+  ml_backtest_predictions_csv: "data/processed/muthukur_ml_backtest_predictions.csv"
+  ml_backtest_summary_json: "data/processed/muthukur_ml_backtest_summary.json"
 
 # Irrigation event persistence mode. Controls how the "Record a New
 # Irrigation Event" dashboard form saves data.
