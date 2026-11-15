@@ -14,107 +14,22 @@ from types import SimpleNamespace
 import pytest
 
 from src.cloud import run_pipeline_job as job
+from cloud_fakes import (EVENTS, EVENTS_KEY, GOOD_BUCKET, FakeBucket, FakeConfig, csv_text,
+                         fake_runner)
 from src.utils.config import PROJECT_ROOT, get_config
 
 REPO = Path(PROJECT_ROOT)
-EVENTS_KEY = "irrigation_events_csv"
+RUNS = "pipeline-runs/"
 
 
-# --- fakes -------------------------------------------------------------------
-
-class FakeBlob:
-    def __init__(self, store, name):
-        self._store, self.name = store, name
-
-    @property
-    def generation(self):
-        return self._store.gens[self.name]
-
-    @property
-    def size(self):
-        return len(self._store.objects[self.name])
-
-    def download_to_filename(self, path):
-        Path(path).write_bytes(self._store.objects[self.name])
-
-    def download_as_bytes(self, start=0, end=None):
-        data = self._store.objects[self.name]
-        return data[start:(end + 1) if end is not None else None]
-
-    def upload_from_filename(self, path, if_generation_match=None):
-        current = self._store.gens.get(self.name, 0)
-        if if_generation_match is not None and if_generation_match != current:
-            raise RuntimeError("412 PreconditionFailed")
-        self._store.objects[self.name] = Path(path).read_bytes()
-        self._store.gens[self.name] = current + 1
-        self._store.uploads.append(self.name)
-
-
-class FakeBucket:
-    def __init__(self, objects=None):
-        self.objects = dict(objects or {})
-        self.gens = {k: 1 for k in self.objects}
-        self.uploads = []
-
-    def get_blob(self, name):
-        return FakeBlob(self, name) if name in self.objects else None
-
-    def blob(self, name):
-        return FakeBlob(self, name)
-
-
-class FakeConfig:
-    """Maps real config path keys into a temp project root."""
-
-    def __init__(self, root):
-        self.root, self._real = root, get_config()
-
-    def path(self, key):
-        return self.root / Path(self._real.path(key)).relative_to(REPO)
-
-
-def csv_text(cols, rows=3):
-    return ",".join(cols) + "\n" + "\n".join(",".join("1" for _ in cols) for _ in range(rows)) + "\n"
-
-
-EVENTS = b"date,irrigation_mm\n2026-01-01,20\n"
-GOOD_BUCKET = {
-    "data/raw/muthukur_soilgrids.csv": csv_text(["a", "b"]).encode(),
-    "data/manual/muthukur_irrigation_events.csv": EVENTS,
-    "data/processed/muthukur_sentinel2_index_timeseries.csv": csv_text(["date", "ndvi"], 5).encode(),
-}
-
+# --- shared fakes (tests/cloud_fakes.py) -------------------------------------
 
 @pytest.fixture
 def env(tmp_path):
     cfg = FakeConfig(tmp_path)
-    settings = job.JobSettings(project_root=tmp_path, refresh_sentinel2=False, dry_run=False)
+    settings = job.JobSettings(project_root=tmp_path, refresh_sentinel2=False, dry_run=False,
+                               accept_unverified_events=True)
     return cfg, settings, tmp_path
-
-
-def fake_runner(cfg, extra=None, status="success", code=0, touch_events=False, skip=()):
-    def runner(settings):
-        for key in job.UPLOAD_KEYS:
-            if key in skip or key in job.PROTECTED_KEYS:
-                continue
-            p = cfg.path(key)
-            p.parent.mkdir(parents=True, exist_ok=True)
-            if p.suffix == ".csv":
-                if not p.exists():
-                    p.write_text(csv_text(["date", "v"]), encoding="utf-8")
-            elif key == "pipeline_run_metadata_json":
-                p.write_text(json.dumps({"status": status}), encoding="utf-8")
-            else:
-                p.write_text("x", encoding="utf-8")
-        # a model binary and cache that must never be uploaded
-        (settings.project_root / "models").mkdir(exist_ok=True)
-        (settings.project_root / "models" / "m.joblib").write_bytes(b"bin")
-        if touch_events:
-            cfg.path(EVENTS_KEY).write_text("tampered", encoding="utf-8")
-        for fn in (extra or []):
-            fn()
-        return code
-    return runner
 
 
 # --- mapping / config --------------------------------------------------------
@@ -183,15 +98,15 @@ def test_main_py_still_supports_those_flags():
 
 # --- upload behaviour --------------------------------------------------------
 
-def test_happy_path_uploads_only_allow_listed_outputs(env):
+def test_happy_path_publishes_only_under_pipeline_runs(env):
     cfg, settings, _ = env
     bucket = FakeBucket(GOOD_BUCKET)
     result = job.run_job(bucket, settings, cfg, runner=fake_runner(cfg))
-    assert result["uploaded"]
-    assert set(bucket.uploads) <= {f.object_name for f in job.build_file_map(job.UPLOAD_KEYS, cfg, settings)}
+    assert result["uploaded"] and result["promoted"]
+    assert bucket.uploads and all(n.startswith(RUNS) for n in bucket.uploads)
     assert not any("models/" in n or n.endswith(".joblib") for n in bucket.uploads)
-    assert "data/manual/muthukur_irrigation_events.csv" not in bucket.uploads
-    assert bucket.objects["data/manual/muthukur_irrigation_events.csv"] == EVENTS
+    assert not any("muthukur_irrigation_events" in n for n in bucket.uploads)
+    assert {n: bucket.objects[n] for n in GOOD_BUCKET} == GOOD_BUCKET  # data/ objects untouched
 
 
 def test_nonzero_pipeline_exit_uploads_nothing(env):
@@ -229,22 +144,24 @@ def test_modified_irrigation_events_fails_and_uploads_nothing(env):
 def test_schema_change_is_rejected_then_allowed_with_flag(env):
     cfg, settings, _ = env
     remote = "data/processed/muthukur_open_meteo_forecast_risk.csv"
-    bucket = FakeBucket({**GOOD_BUCKET, remote: csv_text(["date", "OLD_COLUMN"]).encode()})
+    old = csv_text(["date", "OLD_COLUMN"]).encode()
+    bucket = FakeBucket({**GOOD_BUCKET, remote: old})
     with pytest.raises(job.JobError, match="schema changed"):
         job.run_job(bucket, settings, cfg, runner=fake_runner(cfg))
     assert bucket.uploads == []
     settings.allow_schema_change = True
     settings.allow_local_overwrite = True  # same temp dir is reused for the second run
-    job.run_job(bucket, settings, cfg, runner=fake_runner(cfg))
-    assert remote in bucket.uploads
+    result = job.run_job(bucket, settings, cfg, runner=fake_runner(cfg))
+    assert any(n.endswith("muthukur_open_meteo_forecast_risk.csv") for n in result["uploaded"])
+    assert bucket.objects[remote] == old  # the data/ object itself is never replaced
 
 
 def test_same_schema_passes_header_check(env):
     cfg, settings, _ = env
     remote = "data/processed/muthukur_open_meteo_forecast_risk.csv"
     bucket = FakeBucket({**GOOD_BUCKET, remote: csv_text(["date", "v"]).encode()})
-    job.run_job(bucket, settings, cfg, runner=fake_runner(cfg))
-    assert remote in bucket.uploads
+    result = job.run_job(bucket, settings, cfg, runner=fake_runner(cfg))
+    assert any(n.endswith("muthukur_open_meteo_forecast_risk.csv") for n in result["uploaded"])
 
 
 def test_shrinking_timeseries_is_rejected(env):
@@ -279,53 +196,41 @@ def test_dry_run_uploads_nothing(env):
     assert bucket.objects == dict(GOOD_BUCKET)  # bucket content untouched
 
 
-def test_concurrent_writer_after_snapshot_is_not_overwritten(env):
-    cfg, settings, _ = env
-    remote = "data/processed/muthukur_open_meteo_forecast_risk.csv"
-    bucket = FakeBucket({**GOOD_BUCKET, remote: csv_text(["date", "v"]).encode()})
-
-    def someone_else_writes():
-        bucket.objects[remote] = csv_text(["date", "v"], 4).encode()  # same schema, new generation
-        bucket.gens[remote] += 1
-
-    with pytest.raises(job.JobError, match="Upload failed"):
-        job.run_job(bucket, settings, cfg, runner=fake_runner(cfg, extra=[someone_else_writes]))
-    assert bucket.objects[remote] != cfg.path("forecast_risk_csv").read_bytes()  # their write survived
-
-
-def test_new_object_created_by_someone_else_is_not_overwritten(env):
-    cfg, settings, _ = env
-    remote = "data/processed/muthukur_weather_risk_scores.csv"
-    bucket = FakeBucket(GOOD_BUCKET)  # absent at snapshot time -> generation 0
-
-    def appears():
-        bucket.objects[remote] = b"date,v\n1,1\n"
-        bucket.gens[remote] = 7
-
-    with pytest.raises(job.JobError, match="Upload failed"):
-        job.run_job(bucket, settings, cfg, runner=fake_runner(cfg, extra=[appears]))
-
-
-def test_metadata_is_uploaded_last(env):
+def test_input_replaced_in_gcs_during_run_blocks_publishing(env):
     cfg, settings, _ = env
     bucket = FakeBucket(GOOD_BUCKET)
-    job.run_job(bucket, settings, cfg, runner=fake_runner(cfg))
-    assert bucket.uploads[-1] == "data/processed/pipeline_run_metadata.json"
+    events = "data/manual/muthukur_irrigation_events.csv"
+
+    def someone_updates_events():
+        bucket.objects[events] = EVENTS + b"2026-02-01,15\n"
+        bucket.gens[events] += 1
+
+    with pytest.raises(job.JobError, match="changed in Cloud Storage during the run"):
+        job.run_job(bucket, settings, cfg, runner=fake_runner(cfg, extra=[someone_updates_events]))
+    assert bucket.uploads == []
 
 
-@pytest.mark.parametrize("key,suffix", [(EVENTS_KEY, ".csv")])
-def test_upload_guard_refuses_protected_file_even_if_forced(env, key, suffix):
+def test_manifest_is_uploaded_last_and_latest_after_it(env):
     cfg, settings, _ = env
-    fm = job.build_file_map([key], cfg, settings)[0]
+    bucket = FakeBucket(GOOD_BUCKET)
+    result = job.run_job(bucket, settings, cfg, runner=fake_runner(cfg))
+    assert bucket.uploads[-2].endswith("/manifest.json")
+    assert bucket.uploads[-1] == "pipeline-runs/latest.json"
+    assert result["manifest_object"] == bucket.uploads[-2]
+
+
+def test_upload_guard_refuses_protected_file(env):
+    cfg, settings, _ = env
+    fm = job.build_file_map([EVENTS_KEY], cfg, settings)[0]
     with pytest.raises(job.JobError, match="protected"):
-        job.upload_outputs(FakeBucket(), [fm], settings, cfg)
+        job.assert_uploadable(fm, settings, cfg)
 
 
 def test_upload_guard_refuses_model_artifacts(env):
     cfg, settings, root = env
     bad = job.FileMap("irrigation_priority_model_path", root / "models" / "m.joblib", "data/models/m.joblib")
     with pytest.raises(job.JobError, match="model"):
-        job.upload_outputs(FakeBucket(), [bad], settings, cfg)
+        job.assert_uploadable(bad, settings, cfg)
 
 
 # --- exit status / entry point ----------------------------------------------
@@ -381,13 +286,6 @@ def test_dry_run_bucket_is_read_only():
     assert ro.get_blob("data/raw/muthukur_soilgrids.csv") is not None
     with pytest.raises(job.JobError, match="read-only"):
         ro.blob("anything")
-
-
-def test_upload_outputs_refuses_in_dry_run(env):
-    cfg, settings, _ = env
-    settings.dry_run = True
-    with pytest.raises(job.JobError, match="dry run"):
-        job.upload_outputs(FakeBucket(), [], settings, cfg)
 
 
 def test_dry_run_still_fails_nonzero_on_pipeline_and_validation_failures(env):

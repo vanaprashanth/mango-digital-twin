@@ -40,7 +40,7 @@ OTHER_EXCLUDED_PROBES = [
     "app/streamlit_app.py", "tests/test_x.py", "docs/x.md", "notebooks/n.ipynb", "scripts/s.py",
     ".github/workflows/daily-data-refresh.yml", "Dockerfile", "requirements.txt", "README.md",
     "ml-evaluation-43652374481.zip", "some_new_root_file.txt", "src/__pycache__/x.cpython-312.pyc",
-    ".pytest_cache/v/cache", "Dockerfile.pipeline.bak", "cloudbuild.pipeline.yaml",
+    ".pytest_cache/v/cache/lastfailed", "Dockerfile.pipeline.bak", "cloudbuild.pipeline.yaml",
 ]
 
 

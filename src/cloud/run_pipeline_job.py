@@ -2,49 +2,60 @@
 Cloud Run Job entry point for the Mango Digital Twin data refresh.
 
     python -m src.cloud.run_pipeline_job                # DRY RUN (the default)
-    python -m src.cloud.run_pipeline_job --upload       # real run: uploads verified outputs
+    python -m src.cloud.run_pipeline_job --upload       # write-enabled: versioned publish
     python -m src.cloud.run_pipeline_job --print-inventory   # offline: list object paths
     python -m src.cloud.run_pipeline_job --verify-bucket     # read-only bucket check
+    python -m src.cloud.run_pipeline_job --verify-latest     # read-only: validate latest run
 
 Environment (all strictly parsed; an unrecognised value is an error, never a
 silent default):
 
-    MANGOTWIN_DRY_RUN                  default true.  Uploads happen ONLY when this
+    MANGOTWIN_DRY_RUN                  default true.  Writes happen ONLY when this
                                        is explicitly false (or --upload is passed).
     MANGOTWIN_REFRESH_SENTINEL2        default true.  false = use cached satellite data.
     MANGOTWIN_GCS_BUCKET / _PREFIX     default mango-digital-twin-vsp-data / data
+                                       (_PREFIX is where INPUTS are read from).
+    MANGOTWIN_EXPECTED_EVENTS_SHA256   SHA-256 of the GitHub copy of the irrigation events;
+                                       the bucket copy must match or the job refuses to run.
+    MANGOTWIN_ACCEPT_UNVERIFIED_EVENTS default false. A write-enabled run needs the hash
+                                       above OR this explicit opt-in (GCS copy may be stale).
     MANGOTWIN_ALLOW_LOCAL_OVERWRITE    default false. Refuses to overwrite files that
                                        already exist under data/ (protects a developer
                                        checkout, including the manual irrigation events).
 
 What it does (and nothing else):
 
-  1. Snapshots the generation of every object it could later write.
-  2. Downloads ONLY the inputs the pipeline needs from gs://<bucket>/<prefix>/
+  1. Downloads ONLY the inputs the pipeline needs from gs://<bucket>/<prefix>/
      into the same repo-relative paths the pipeline already uses.
-  3. Runs the existing pipeline unchanged: ``python main.py --skip-soil-fetch
+  2. Runs the existing pipeline unchanged: ``python main.py --skip-soil-fetch
      [--refresh-sentinel2]``.
-  4. Sanitises + annotates the run-metadata JSON, verifies every output, and
-     (only when not a dry run) uploads an explicit allow-list.
+  3. Sanitises + annotates the run-metadata JSON and verifies every output.
+  4. Dry run: builds and validates the run manifest, writes nothing.
+     Write-enabled: publishes the outputs as an immutable, versioned run under
+     ``pipeline-runs/<run-id>/``, then a completion manifest, then promotes
+     ``pipeline-runs/latest.json`` by compare-and-swap (see src/cloud/publish.py).
 
-Safety properties (each is covered by tests/test_cloud_pipeline_job.py):
+Safety properties (covered by tests/test_cloud_pipeline_job.py and
+tests/test_cloud_publish.py):
 
+  * Existing data/raw, data/processed and data/manual objects are NEVER written
+    (the write path is scoped to ``pipeline-runs/``).
   * Path names come from configs/config.yaml ``paths`` keys, never hardcoded.
   * Application Default Credentials only; no key files or secrets are read.
   * A missing required input fails the job before the pipeline starts.
-  * The manual irrigation-events CSV is download-only: never on the upload
-    allow-list, any upload of its object name is refused, and the job fails if
-    its local bytes changed during the run.
+  * The manual irrigation-events CSV is download-only: never published, and the
+    job fails if its local bytes changed during the run. The GCS copy is not
+    assumed authoritative (see MANGOTWIN_EXPECTED_EVENTS_SHA256).
   * The ML training dataset, models, ML metrics and experimental artifacts are
-    not on the upload allow-list.
-  * Nothing is uploaded unless the pipeline exited 0, its metadata reports
-    success, and every output passes verification (existence, non-empty, CSV
-    header equal to the object already in the bucket, no unexpected shrinkage).
-  * Uploads use the generation observed BEFORE the run as a precondition, so
-    anything written by someone else meanwhile is never overwritten.
+    not on the publish allow-list.
+  * Nothing is published unless the pipeline exited 0, its metadata reports
+    success, every output passes verification, and no input object changed in
+    GCS during the run.
+  * The latest pointer moves only after every output and the manifest are
+    uploaded and read back; a failed or partial run never becomes latest.
   * Dry-run uses a read-only bucket wrapper: any write attempt raises.
-  * Satellite data is labelled CACHED vs REFRESHED in the log and metadata.
-  * The metadata uploaded has local paths removed and is scanned for secrets.
+  * Satellite data is labelled CACHED vs REFRESHED in the log, metadata, manifest.
+  * The metadata and manifest published have local paths removed and are scanned.
   * Exit status is non-zero on any failure.
 
 Scientific calculations, the ML classifier and the daily GitHub Actions
@@ -63,6 +74,7 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any, Optional
@@ -71,6 +83,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.cloud import publish  # noqa: E402
+from src.cloud.errors import JobError  # noqa: E402,F401  (re-exported)
 from src.utils.config import get_config  # noqa: E402
 
 log = logging.getLogger("mangotwin.cloud_job")
@@ -122,7 +136,8 @@ UPLOAD_KEYS = (
 )
 METADATA_KEY = "pipeline_run_metadata_json"
 # Never uploaded, whatever else changes.
-PROTECTED_KEYS = ("irrigation_events_csv",)
+EVENTS_KEY = "irrigation_events_csv"
+PROTECTED_KEYS = (EVENTS_KEY,)
 # Explicitly excluded from the initial rollout (documented + tested).
 EXCLUDED_ML_KEYS = (
     "ml_training_dataset_csv",
@@ -153,10 +168,6 @@ TRUE_VALUES = ("1", "true", "yes", "on")
 FALSE_VALUES = ("0", "false", "no", "off")
 
 
-class JobError(RuntimeError):
-    """A clear, user-facing failure. Mapped to a non-zero exit status."""
-
-
 @dataclass
 class JobSettings:
     bucket: str = DEFAULT_BUCKET
@@ -166,6 +177,11 @@ class JobSettings:
     allow_schema_change: bool = False
     allow_local_overwrite: bool = False
     project_root: Path = PROJECT_ROOT
+    runs_prefix: str = publish.RUNS_PREFIX
+    run_id: Optional[str] = None                   # generated when None
+    expected_events_sha256: Optional[str] = None   # SHA-256 of the GitHub copy of the irrigation events
+    accept_unverified_events: bool = False         # explicit opt-in to trust the GCS copy
+    execution_name: Optional[str] = None           # e.g. Cloud Run execution name (not secret)
 
 
 @dataclass
@@ -255,21 +271,6 @@ def snapshot_file(path: Path) -> dict[str, Any]:
     return entry
 
 
-# --- Generation snapshot ------------------------------------------------------
-
-def snapshot_generations(bucket, settings: JobSettings, config=None) -> dict[str, int]:
-    """Generation of every object the job could write (0 = does not exist).
-
-    Taken BEFORE downloading, so a write by anyone else at any later point
-    makes the corresponding upload fail its precondition.
-    """
-    out: dict[str, int] = {}
-    for fm in build_file_map(UPLOAD_KEYS, config, settings):
-        blob = bucket.get_blob(fm.object_name)
-        out[fm.object_name] = int(blob.generation) if blob is not None else 0
-    return out
-
-
 # --- Download ---------------------------------------------------------------
 
 def download_inputs(bucket, settings: JobSettings, config=None) -> dict[str, dict[str, Any]]:
@@ -319,6 +320,7 @@ def download_inputs(bucket, settings: JobSettings, config=None) -> dict[str, dic
             raise JobError(f"Downloaded input is empty: {fm.object_name}")
         entry = snapshot_file(fm.local)
         entry["object"] = fm.object_name
+        entry["generation"] = int(blob.generation)
         info[fm.key] = entry
         log.info("Downloaded gs://%s/%s -> %s (%d bytes)", settings.bucket, fm.object_name, fm.local, entry["bytes"])
     return info
@@ -538,46 +540,172 @@ def assert_uploadable(fm: FileMap, settings: JobSettings, config=None) -> None:
         raise JobError(f"Refusing to upload non-allow-listed file: {fm.object_name}")
 
 
-def upload_outputs(bucket, files: list[FileMap], settings: JobSettings, config=None,
-                   generations: Optional[dict[str, int]] = None) -> list[str]:
-    """Upload with if_generation_match = generation seen BEFORE the run.
+# --- Irrigation-events authority ----------------------------------------------
 
-    `generations` must come from snapshot_generations(); an object missing
-    from it is treated as "must not exist yet" (generation 0), which is the
-    safest assumption. The metadata file is uploaded last.
+def check_events_authority(settings: JobSettings, inputs: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Decide, explicitly, how far the GCS copy of the irrigation events is trusted.
+
+    GitHub (data/manual/muthukur_irrigation_events.csv) is the system of record
+    until the migration is complete; the GCS copy is a mirror that can be stale.
+    Never silently treat it as authoritative:
+
+      * expected_events_sha256 given  -> the downloaded bytes must match it, else fail
+      * live run, nothing given       -> fail unless accept_unverified_events is set
+      * dry run, nothing given        -> warn only
     """
-    if settings.dry_run:
-        raise JobError("upload_outputs called during a dry run; refusing.")
+    entry = inputs[EVENTS_KEY]
+    info = {
+        "object": entry["object"],
+        "generation": entry["generation"],
+        "sha256": entry["sha256"],
+        "rows": entry.get("rows"),
+        "latest_event_date": entry.get("latest_date"),
+    }
+    expected = (settings.expected_events_sha256 or "").strip().lower() or None
+    if expected:
+        if not publish.SHA256_RE.match(expected):
+            raise JobError("MANGOTWIN_EXPECTED_EVENTS_SHA256 must be 64 lowercase hex characters.")
+        if expected != entry["sha256"]:
+            raise JobError(
+                "The irrigation-events CSV in Cloud Storage does NOT match the expected GitHub copy "
+                f"(expected sha256 {expected}, bucket has {entry['sha256']}). The GCS copy is stale or "
+                "different; refusing to run. Re-sync it from GitHub deliberately, then retry."
+            )
+        info["authority"] = "matches_expected_github_sha256"
+        info["verified_against_github"] = True
+    elif settings.accept_unverified_events:
+        info["authority"] = "gcs_copy_accepted_unverified"
+        info["verified_against_github"] = False
+        log.warning("Irrigation events: using the GCS copy WITHOUT verification against GitHub (explicitly accepted).")
+    elif settings.dry_run:
+        info["authority"] = "gcs_copy_unverified_dry_run"
+        info["verified_against_github"] = False
+        log.warning("Irrigation events are NOT verified against GitHub (dry run). A live run needs "
+                    "MANGOTWIN_EXPECTED_EVENTS_SHA256 or MANGOTWIN_ACCEPT_UNVERIFIED_EVENTS=true.")
+    else:
+        raise JobError(
+            "Refusing a write-enabled run: the GCS irrigation-events CSV has not been verified against "
+            "GitHub and may be stale. Set MANGOTWIN_EXPECTED_EVENTS_SHA256=<sha256 of the GitHub copy> "
+            "(preferred) or MANGOTWIN_ACCEPT_UNVERIFIED_EVENTS=true to accept the risk explicitly."
+        )
+    return info
+
+
+def check_inputs_unchanged(bucket, inputs: dict[str, dict[str, Any]]) -> None:
+    """Fail if any downloaded input object was replaced in GCS while the job ran."""
+    changed = []
+    for key, entry in inputs.items():
+        blob = bucket.get_blob(entry["object"])
+        now_gen = int(blob.generation) if blob is not None else 0
+        if now_gen != entry["generation"]:
+            changed.append(f"{entry['object']} (generation {entry['generation']} -> {now_gen})")
+    if changed:
+        raise JobError("Input object(s) changed in Cloud Storage during the run; not publishing outputs "
+                       "derived from stale inputs:\n  " + "\n  ".join(changed))
+
+
+# --- Run manifest ---------------------------------------------------------------
+
+def pipeline_step_summary(settings: JobSettings, config=None) -> dict[str, Any]:
+    """Step outcomes from the metadata the pipeline itself wrote.
+
+    Vocabulary (src/pipeline/run_pipeline.py): RUN, SKIP_FRESH, SKIP_MISSING_INPUT, FAILED.
+    """
+    fm = build_file_map([METADATA_KEY], config, settings)[0]
+    steps = json.loads(fm.local.read_text(encoding="utf-8")).get("step_results") or []
+    by_status: dict[str, int] = {}
+    for st in steps:
+        if isinstance(st, dict):
+            key = str(st.get("status", "unknown"))
+            by_status[key] = by_status.get(key, 0) + 1
+    return {"steps_reported": sum(by_status.values()), "by_status": dict(sorted(by_status.items())),
+            "steps_failed": by_status.get("FAILED", 0),
+            "steps_skipped_missing_input": by_status.get("SKIP_MISSING_INPUT", 0)}
+
+
+def build_run_artifacts(settings: JobSettings, files: list[FileMap], inputs: dict[str, dict[str, Any]],
+                        satellite: dict[str, Any], events_info: dict[str, Any], run_id: str,
+                        started_at: str, executed_at: str, config=None):
+    """Return (manifest, [(local_path, output_entry)]) for the verified outputs."""
+    root = (settings.project_root / "data").resolve()
+    pairs: list[tuple[Path, dict[str, Any]]] = []
+    present = set()
     for fm in files:
         assert_uploadable(fm, settings, config)
-    generations = generations or {}
-    ordered = sorted(files, key=lambda f: f.key == METADATA_KEY)
-    uploaded = []
-    for fm in ordered:
-        blob = bucket.blob(fm.object_name)
-        try:
-            blob.upload_from_filename(str(fm.local), if_generation_match=generations.get(fm.object_name, 0))
-        except Exception as exc:  # PreconditionFailed or transport errors
-            raise JobError(
-                f"Upload failed for {fm.object_name}: {type(exc).__name__}: {exc} "
-                f"(already uploaded: {len(uploaded)} file(s))"
-            ) from exc
-        uploaded.append(fm.object_name)
-        log.info("Uploaded %s -> gs://%s/%s", fm.local, settings.bucket, fm.object_name)
-    return uploaded
+        present.add(fm.key)
+        rel = fm.local.resolve().relative_to(root).as_posix()
+        snap = snapshot_file(fm.local)
+        entry: dict[str, Any] = {
+            "key": fm.key,
+            "filename": fm.local.name,
+            "path": f"data/{rel}",
+            "object": publish.run_object_name(rel, run_id, settings.runs_prefix),
+            "bytes": snap["bytes"],
+            "sha256": snap["sha256"],
+            "md5_base64": publish.md5_b64_of_file(fm.local),
+        }
+        if "rows" in snap:
+            entry["rows"] = snap["rows"]
+            entry["latest_date"] = snap["latest_date"]
+        pairs.append((fm.local, entry))
+    skipped = [k for k in UPLOAD_KEYS if k not in present]
+
+    inputs_block = {
+        k: {"object": v["object"], "generation": v["generation"], "sha256": v["sha256"],
+            "rows": v.get("rows"), "latest_date": v.get("latest_date")}
+        for k, v in inputs.items()
+    }
+    steps = pipeline_step_summary(settings, config)
+    if steps["steps_failed"]:
+        raise JobError(f"Pipeline metadata reports {steps['steps_failed']} failed step(s); nothing was uploaded.")
+    validation = {
+        "status": "integrity_checks_passed_not_field_validated",
+        "field_validated": False,
+        "note": ("Structural and integrity checks only. Irrigation labels are surrogate and have not been "
+                 "validated against field observations; this is not a scientific accuracy claim."),
+        "checks": {
+            "pipeline_exit_zero": True,
+            "pipeline_metadata_status_success": True,
+            "no_failed_pipeline_steps": True,
+            "outputs_present_non_empty": True,
+            "csv_headers_match_existing_objects": not settings.allow_schema_change,
+            "no_time_series_shrinkage_over_10pct": True,
+            "irrigation_events_unchanged_by_run": True,
+            "run_metadata_sanitised_and_scanned": True,
+        },
+        "pipeline_steps": steps,
+    }
+    execution = {"runner": "cloud-run-job", "sentinel_refresh_requested": settings.refresh_sentinel2,
+                 "execution_name": settings.execution_name}
+    manifest = publish.build_manifest(
+        run_id=run_id, runs_prefix=settings.runs_prefix, started_at=started_at, executed_at=executed_at,
+        pipeline_status="success", outputs=[e for _, e in pairs], skipped_optional=skipped,
+        inputs=inputs_block, satellite_data=satellite, scientific_validation=validation,
+        runtime=environment_info(), irrigation_events=events_info, execution=execution)
+    text = json.dumps(manifest)
+    hits = scan_for_sensitive(text)
+    if hits:
+        raise JobError("Run manifest failed the sensitive-content scan; nothing was uploaded: " + "; ".join(hits))
+    publish.validate_manifest(manifest, settings.runs_prefix, allowed_keys=UPLOAD_KEYS, require_key=METADATA_KEY)
+    return manifest, pairs
 
 
 # --- Orchestration ----------------------------------------------------------
 
-def run_job(bucket, settings: JobSettings, config=None, runner=run_pipeline) -> dict[str, Any]:
+def run_job(bucket, settings: JobSettings, config=None, runner=run_pipeline,
+            clock=publish.utc_now, sleep=None) -> dict[str, Any]:
     config = config or get_config()
+    started = clock()
+    run_id = publish.check_run_id(settings.run_id) if settings.run_id else publish.new_run_id(started)
     if settings.dry_run:
         bucket = ReadOnlyBucket(bucket)
-    log.info("MODE: %s | satellite refresh requested: %s",
-             "DRY RUN (nothing will be uploaded)" if settings.dry_run else "LIVE UPLOAD",
-             settings.refresh_sentinel2)
-    generations = snapshot_generations(bucket, settings, config)
+    else:
+        bucket = publish.WriteScopedBucket(bucket, settings.runs_prefix)
+    log.info("MODE: %s | run id: %s | satellite refresh requested: %s",
+             "DRY RUN (nothing will be uploaded)" if settings.dry_run else "LIVE (versioned publish)",
+             run_id, settings.refresh_sentinel2)
     inputs = download_inputs(bucket, settings, config)
+    events_info = check_events_authority(settings, inputs)
     code = runner(settings)
     if code != 0:
         raise JobError(f"Pipeline exited with status {code}; nothing was uploaded.")
@@ -585,16 +713,47 @@ def run_job(bucket, settings: JobSettings, config=None, runner=run_pipeline) -> 
     log.info("%s", describe_satellite_report(satellite))
     finalize_metadata(settings, inputs, satellite, config)
     files = verify_outputs(bucket, settings, inputs, config)
-    result: dict[str, Any] = {"dry_run": settings.dry_run, "satellite_data": satellite,
-                              "uploaded": [], "would_upload": []}
+    manifest, pairs = build_run_artifacts(settings, files, inputs, satellite, events_info, run_id,
+                                          publish.iso(started), publish.iso(clock()), config)
+    prefix = publish.run_prefix(run_id, settings.runs_prefix)
+    result: dict[str, Any] = {"dry_run": settings.dry_run, "run_id": run_id, "run_prefix": prefix,
+                              "satellite_data": satellite, "uploaded": [], "would_upload": [],
+                              "promoted": False, "manifest": manifest}
     if settings.dry_run:
-        result["would_upload"] = [f.object_name for f in files]
-        log.info("Dry run complete: verified %d output(s); nothing uploaded.", len(files))
-        for fm in files:
-            log.info("  would upload %s -> gs://%s/%s", fm.local.name, settings.bucket, fm.object_name)
+        result["would_upload"] = [e["object"] for _, e in pairs] + [publish.manifest_object(run_id, settings.runs_prefix)]
+        result["would_promote"] = publish.latest_object(settings.runs_prefix)
+        log.info("Dry run complete: verified %d output(s) and a valid manifest for run %s; nothing uploaded.",
+                 len(pairs), run_id)
+        for _, e in pairs:
+            log.info("  would upload %s -> gs://%s/%s", e["filename"], settings.bucket, e["object"])
         return result
-    result["uploaded"] = upload_outputs(bucket, files, settings, config, generations)
+    check_inputs_unchanged(bucket, inputs)
+    kwargs = {} if sleep is None else {"sleep": sleep}
+    outcome = publish.publish_run(bucket, manifest, pairs, settings.runs_prefix, last_key=METADATA_KEY,
+                                  now=clock, **kwargs)
+    result.update(uploaded=outcome["uploaded"], promoted=outcome["promoted"], promotion=outcome["reason"],
+                  manifest_object=outcome["manifest_object"])
+    if not outcome["promoted"]:
+        log.warning("Run %s is complete and verified but was NOT promoted: %s (current latest: %s)",
+                    run_id, outcome["reason"], outcome.get("current_run_id"))
     return result
+
+
+def verify_latest_run(bucket, settings: JobSettings) -> int:
+    """Read-only: latest.json -> manifest -> every object listed in it."""
+    try:
+        info = publish.verify_latest(publish_reader(bucket), settings.runs_prefix,
+                                     allowed_keys=UPLOAD_KEYS, require_key=METADATA_KEY)
+    except JobError as exc:
+        print(f"LATEST INVALID: {exc}")
+        return 1
+    print(f"latest run {info['run_id']} OK: {info['files']} object(s) verified (executed {info['executed_at']})")
+    return 0
+
+
+def publish_reader(bucket):
+    """Read-only view of a bucket for verification."""
+    return ReadOnlyBucket(bucket)
 
 
 # --- Inventory / read-only bucket check --------------------------------------
@@ -613,6 +772,8 @@ def print_inventory(settings: JobSettings, config=None) -> None:
         print(f"\n{title.upper()} ({len(inv[title])}):")
         for n in inv[title]:
             print(f"  {base}/{n}")
+    print(f"\nWRITE-ENABLED runs publish ONLY under gs://{settings.bucket}/{settings.runs_prefix}/<run-id>/ "
+          f"(the data/ objects above are never written).")
     print("\nRead-only verification (no writes):")
     print(f"  gcloud storage ls --long --recursive {base}/{settings.prefix.strip('/')}/")
     print("  python -m src.cloud.run_pipeline_job --verify-bucket")
@@ -660,21 +821,28 @@ def parse_args(argv=None, environ=None) -> tuple[JobSettings, argparse.Namespace
                    help="Use cached satellite data (same as MANGOTWIN_REFRESH_SENTINEL2=false).")
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="Download, run, verify; upload nothing (default).")
-    mode.add_argument("--upload", action="store_true", help="Upload verified outputs (overrides MANGOTWIN_DRY_RUN).")
+    mode.add_argument("--upload", action="store_true",
+                      help="Publish verified outputs as a versioned run under pipeline-runs/ (overrides MANGOTWIN_DRY_RUN).")
     p.add_argument("--allow-schema-change", action="store_true",
                    help="Permit CSV headers that differ from the objects already in the bucket.")
     p.add_argument("--print-inventory", action="store_true", help="Print declared object paths and exit (offline).")
     p.add_argument("--verify-bucket", action="store_true", help="Read-only check that declared objects exist, then exit.")
+    p.add_argument("--verify-latest", action="store_true",
+                   help="Read-only: validate pipeline-runs/latest.json, its manifest and every listed object, then exit.")
     a = p.parse_args(argv)
 
     env_dry = parse_bool_env("MANGOTWIN_DRY_RUN", True, env)
     env_refresh = parse_bool_env("MANGOTWIN_REFRESH_SENTINEL2", True, env)
     allow_local = parse_bool_env("MANGOTWIN_ALLOW_LOCAL_OVERWRITE", False, env)
+    accept_events = parse_bool_env("MANGOTWIN_ACCEPT_UNVERIFIED_EVENTS", False, env)
     dry_run = True if a.dry_run else (False if a.upload else env_dry)
     settings = JobSettings(
         bucket=a.bucket, prefix=a.prefix,
         refresh_sentinel2=False if a.no_sentinel else env_refresh,
         dry_run=dry_run, allow_schema_change=a.allow_schema_change, allow_local_overwrite=allow_local,
+        expected_events_sha256=(env.get("MANGOTWIN_EXPECTED_EVENTS_SHA256") or "").strip() or None,
+        accept_unverified_events=accept_events,
+        execution_name=(env.get("CLOUD_RUN_EXECUTION") or "").strip() or None,
     )
     return settings, a
 
@@ -690,6 +858,8 @@ def main(argv=None) -> int:
         bucket = storage.Client().bucket(settings.bucket)
         if args.verify_bucket:
             return verify_bucket(bucket, settings)
+        if args.verify_latest:
+            return verify_latest_run(bucket, settings)
         result = run_job(bucket, settings)
     except JobError as exc:
         log.error("%s", exc)
@@ -697,7 +867,7 @@ def main(argv=None) -> int:
     except Exception as exc:  # any unexpected failure must still fail the job
         log.exception("Unexpected failure: %s", exc)
         return 1
-    log.info("Job complete: %s", json.dumps(result))
+    log.info("Job complete: %s", json.dumps({k: v for k, v in result.items() if k not in ("uploaded", "would_upload", "manifest")}))
     return 0
 
 
