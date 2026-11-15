@@ -141,6 +141,9 @@ paths:
   ml_backtest_summary_json: "data/processed/muthukur_ml_backtest_summary.json"
   ml_label_audit_csv: "data/processed/muthukur_ml_label_audit.csv"
   ml_label_audit_summary_json: "data/processed/muthukur_ml_label_audit_summary.json"
+  ml_medium_failure_analysis_csv: "data/processed/muthukur_ml_medium_failure_analysis.csv"
+  ml_medium_failure_summary_json: "data/processed/muthukur_ml_medium_failure_summary.json"
+  ml_medium_transition_analysis_csv: "data/processed/muthukur_ml_medium_transition_analysis.csv"
 
 # Irrigation event persistence mode. Controls how the "Record a New
 # Irrigation Event" dashboard form saves data.
