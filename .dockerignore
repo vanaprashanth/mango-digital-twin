@@ -29,3 +29,25 @@ build/
 *.egg-info/
 
 # data/ intentionally kept because committed sample CSVs/metadata are needed for demo mode
+
+# Credential/key files must never enter ANY image (dashboard or pipeline).
+# NB: in .dockerignore a bare pattern matches the build-context ROOT only;
+# "**/" is needed to match at any depth. The pipeline job uses ADC and the
+# dashboard image needs no keys. Data JSON (metrics/metadata) lives under
+# data/ and is allowed; top-level *.json is not.
+*.json
+**/*credential*.json
+**/*credentials*.json
+**/*service-account*.json
+**/*service_account*.json
+**/*serviceaccount*.json
+**/*-key.json
+**/*_key.json
+**/elite-list-*.json
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.key
+**/.config/gcloud
+**/.env
+**/.env.*

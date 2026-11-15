@@ -1,0 +1,51 @@
+# Pinned dependency set for the GCP Cloud Run Job image (Dockerfile.pipeline).
+#
+# Python: 3.12 (the image uses python:3.12-slim). Resolved from a clean
+# Python 3.12 environment and verified with `pip install -r` + `pip check`.
+# requirements.txt (Streamlit deployment, daily GitHub workflow) is unchanged
+# and intentionally NOT referenced here.
+#
+# Direct dependencies (everything else is a pinned transitive dependency):
+#   pandas, numpy, requests, PyYAML     - the pipeline itself
+#   earthengine-api                     - optional Sentinel-1/2 refresh
+#   google-cloud-storage                - Cloud Storage client (ADC)
+# Not included on purpose: streamlit, plotly, pytest, scikit-learn and
+# joblib. The pipeline does not import them, and model training never runs
+# in this job.
+#
+# To refresh: build a clean 3.12 venv, install the direct dependencies,
+# run the test-suite, then re-pin with `pip freeze` and review the diff.
+pandas==3.1.1
+numpy==2.5.4
+requests==2.34.2
+PyYAML==6.0.3
+earthengine-api==1.7.52
+google-cloud-storage==3.17.1
+
+# Transitive dependencies (pinned)
+certifi==2026.10.23
+cffi==2.1.1
+charset-normalizer==3.5.2
+cryptography==50.0.2
+google-api-core==2.44.0
+google-api-python-client==2.202.0
+google-auth==2.62.2
+google-auth-httplib2==0.4.4
+google-cloud-core==2.8.0
+google-crc32c==1.9.0
+google-resumable-media==2.11.0
+googleapis-common-protos==1.76.0
+httplib2==0.32.1
+idna==3.20
+opentelemetry-api==1.45.2
+proto-plus==1.29.0
+protobuf==7.36.2
+pyasn1==0.6.5
+pyasn1_modules==0.4.2
+pycparser==3.12
+pyparsing==3.3.3
+python-dateutil==4.0.0
+tzdata==2026.6
+typing_extensions==4.16.0
+uritemplate==4.2.0
+urllib3==2.8.0
