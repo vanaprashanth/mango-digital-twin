@@ -80,3 +80,5 @@ logs/
 *.tar
 *.tar.gz
 *.log
+
+!cloudbuild.pipeline.yaml
