@@ -37,7 +37,7 @@ steps:
         IMAGE=us-east1-docker.pkg.dev/mango-digital-twin-vsp/mangotwin-containers/mangotwin-pipeline:$BUILD_ID
         bad="$$(docker run --rm --entrypoint find "$$IMAGE" /app \( -name '*.json' -o -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '.env*' -o -name '*.joblib' -o -name '*.pkl' -o -name '*credential*' \) -print)"
         if [ -n "$$bad" ]; then echo "Forbidden files in image:"; echo "$$bad"; exit 1; fi
-        data="$$(docker run --rm --entrypoint find "$$IMAGE" /app/data -type f -print)"
+        data="$$(docker run --rm --entrypoint sh "$$IMAGE" -c 'if [ -d /app/data ]; then find /app/data -type f -print; fi')"
         if [ -n "$$data" ]; then echo "Data files baked into image:"; echo "$$data"; exit 1; fi
         docker run --rm --entrypoint python "$$IMAGE" --version
         echo "Image content check passed."
