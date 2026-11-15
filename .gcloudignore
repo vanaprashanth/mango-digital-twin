@@ -1,0 +1,82 @@
+# .gcloudignore - controls what `gcloud builds submit` uploads to Cloud Build.
+# Syntax is gitignore (last matching rule wins). When this file exists gcloud
+# uses it INSTEAD of .gitignore, so it must be complete on its own.
+#
+# Strategy: DEFAULT DENY. Everything at the repository root is excluded, then
+# only what Dockerfile.pipeline needs is re-included. A new credential, data
+# file, model or notebook added at the root is therefore never uploaded unless
+# someone deliberately lists it here.
+#
+# Deliberately NOT uploaded: .git history, virtual environments, data/, models/,
+# logs, notebooks, docs, tests, app/ (dashboard), scripts/, any *.json (this
+# includes the service-account key in the repo root), .env files, keys.
+
+# ---- 1. default deny -------------------------------------------------------
+/*
+
+# ---- 2. what Dockerfile.pipeline needs ---------------------------------------
+!/Dockerfile.pipeline
+!/requirements-cloud.txt
+!/main.py
+!/configs/
+!/src/
+!/.dockerignore
+
+# ---- 3. defence in depth inside the re-included directories ------------------
+# These come AFTER the allow rules so they always win.
+# Secrets / credentials (any depth)
+*.json
+*.pem
+*.p12
+*.pfx
+*.key
+*.crt
+*.p8
+.env
+.env.*
+*.env
+*credential*
+*secret*
+*service-account*
+*service_account*
+*serviceaccount*
+*-key.*
+*_key.*
+id_rsa*
+.netrc
+.config/
+.aws/
+.gcloud/
+.ssh/
+.streamlit/secrets.toml
+secrets.toml
+
+# Virtual environments, VCS, caches, editor/OS clutter
+.git/
+.gitignore
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Data, models and generated artifacts
+data/
+models/
+logs/
+*.csv
+*.parquet
+*.joblib
+*.pkl
+*.pickle
+*.h5
+*.onnx
+*.zip
+*.tar
+*.tar.gz
+*.log

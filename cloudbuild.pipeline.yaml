@@ -1,0 +1,52 @@
+# Cloud Build config for the Mango Digital Twin data-refresh pipeline image.
+#
+# Submit from the repository root (build only; does not deploy or run anything):
+#   gcloud builds submit --config cloudbuild.pipeline.yaml \
+#     --project mango-digital-twin-vsp --region us-east1 .
+#
+# Source upload is restricted by .gcloudignore (default-deny allowlist).
+# The image is tagged with the unique Cloud Build id ($BUILD_ID), not a
+# mutable "latest", so a Cloud Run Job can pin exactly what was built/verified.
+# If any step fails, the image is NOT pushed.
+#
+# Builds with the project's default Cloud Build identity: this file makes no
+# IAM changes and names no service account or key.
+
+steps:
+  # 1. Build from the committed pipeline Dockerfile.
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - Dockerfile.pipeline
+      - -t
+      - us-east1-docker.pkg.dev/mango-digital-twin-vsp/mangotwin-containers/mangotwin-pipeline:$BUILD_ID
+      - .
+
+  # 2. Inspect the built image's file system (find only; the pipeline's own
+  #    entrypoint is never started). Fails the build, so nothing is pushed,
+  #    if a credential/key/env/model file or any data file is inside /app.
+  - id: verify-image-contents
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        IMAGE=us-east1-docker.pkg.dev/mango-digital-twin-vsp/mangotwin-containers/mangotwin-pipeline:$BUILD_ID
+        bad="$$(docker run --rm --entrypoint find "$$IMAGE" /app \( -name '*.json' -o -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '.env*' -o -name '*.joblib' -o -name '*.pkl' -o -name '*credential*' \) -print)"
+        if [ -n "$$bad" ]; then echo "Forbidden files in image:"; echo "$$bad"; exit 1; fi
+        data="$$(docker run --rm --entrypoint find "$$IMAGE" /app/data -type f -print)"
+        if [ -n "$$data" ]; then echo "Data files baked into image:"; echo "$$data"; exit 1; fi
+        docker run --rm --entrypoint python "$$IMAGE" --version
+        echo "Image content check passed."
+
+# Pushed only after every step above succeeded.
+images:
+  - us-east1-docker.pkg.dev/mango-digital-twin-vsp/mangotwin-containers/mangotwin-pipeline:$BUILD_ID
+
+timeout: 1200s
+
+options:
+  logging: CLOUD_LOGGING_ONLY
