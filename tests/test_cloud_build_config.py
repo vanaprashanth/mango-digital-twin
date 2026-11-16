@@ -40,7 +40,7 @@ OTHER_EXCLUDED_PROBES = [
     "app/streamlit_app.py", "tests/test_x.py", "docs/x.md", "notebooks/n.ipynb", "scripts/s.py",
     ".github/workflows/daily-data-refresh.yml", "Dockerfile", "requirements.txt", "README.md",
     "ml-evaluation-43652374481.zip", "some_new_root_file.txt", "src/__pycache__/x.cpython-312.pyc",
-    ".pytest_cache/v/cache/lastfailed", "Dockerfile.pipeline.bak", "cloudbuild.pipeline.yaml",
+    ".pytest_cache/v/cache/lastfailed", "Dockerfile.pipeline.bak",
 ]
 
 
@@ -106,7 +106,7 @@ def test_upload_set_contains_exactly_the_sources_dockerfile_pipeline_needs(uploa
     for required in ("Dockerfile.pipeline", "requirements-cloud.txt", "main.py", "configs/config.yaml",
                      "src/cloud/run_pipeline_job.py", "src/pipeline/run_pipeline.py", "src/utils/config.py"):
         assert required in uploaded, required
-    allowed_exact = {"Dockerfile.pipeline", "requirements-cloud.txt", "main.py", ".dockerignore"}
+    allowed_exact = {"Dockerfile.pipeline", "requirements-cloud.txt", "main.py", ".dockerignore", "cloudbuild.pipeline.yaml"}
     stray = [p for p in uploaded
              if p not in allowed_exact and not p.startswith("configs/") and not (p.startswith("src/") and p.endswith((".py", ".yaml", ".yml", ".txt", ".md")))]
     assert not stray, stray
