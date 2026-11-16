@@ -523,6 +523,195 @@ def test_external_dependency_report(tmp_path):
     assert rep["ml_model_and_unpublished_ml_artifacts"]["status"] == "not_versioned_by_snapshot"
 
 
+# --- SoilGrids: raw mismatch vs. formatting-only difference ---------------------------------------
+
+SOIL_OBJ = "data/raw/muthukur_soilgrids.csv"
+SOIL_CRLF = (REPO / "data" / "raw" / "muthukur_soilgrids.csv").read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+SOIL_LF = SOIL_CRLF.replace(b"\r\n", b"\n")
+
+
+def test_confirmed_soilgrids_fixtures_are_the_documented_cases():
+    assert (len(SOIL_LF), SOIL_LF.count(b"\n"), hashlib.sha256(SOIL_LF).hexdigest()) == (
+        623, 22, "806bea8008700fdd11e7dbe12e063fddbf8830437d9f87379bc2ec2ba804e39c")
+    assert (len(SOIL_CRLF), SOIL_CRLF.count(b"\r\n"), hashlib.sha256(SOIL_CRLF).hexdigest()) == (
+        645, 22, "7a394d052a2c0ef11f445914f6cc3a755ce76062a913dee596a57af80915058b")
+
+
+class SoilCfg:
+    def __init__(self, local, events):
+        self._p = {"soilgrids_csv": local, "irrigation_events_csv": events}
+
+    def path(self, k):
+        return self._p[k]
+
+
+def soil_case(tmp_path, local_bytes, reference=SOIL_CRLF, recorded_sha=None, generation=None):
+    soil, events = tmp_path / "soil.csv", tmp_path / "events.csv"
+    soil.write_bytes(local_bytes)
+    events.write_bytes(b"e")
+    bucket = FakeBucket({SOIL_OBJ: reference} if reference is not None else {})
+    gen = generation if generation is not None else bucket.gens.get(SOIL_OBJ, 5)
+    manifest = {"inputs": {"soilgrids_csv": {"object": SOIL_OBJ, "generation": gen,
+                                             "sha256": recorded_sha or hashlib.sha256(SOIL_CRLF).hexdigest()}}}
+    return manifest, SoilCfg(soil, events), bucket
+
+
+def soil_report(tmp_path, local_bytes, settings=None, **kw):
+    manifest, c, bucket = soil_case(tmp_path, local_bytes, **kw)
+    s = settings or sl.SnapshotSettings(sleep=lambda x: None)
+    return sl.external_dependency_report(manifest, c, ro(bucket), s)["soilgrids_csv"], bucket
+
+
+def test_lf_local_vs_crlf_run_input_is_formatting_only(tmp_path):
+    entry, _ = soil_report(tmp_path, SOIL_LF)
+    assert entry["status"] == "formatting_only_difference"
+    assert entry["local_sha256"] != entry["run_input_sha256"]            # raw bytes still differ, and say so
+    assert entry["local_lf_normalized_sha256"] == entry["reference_lf_normalized_sha256"] == hashlib.sha256(SOIL_LF).hexdigest()
+
+
+def test_crlf_local_vs_lf_run_input_is_formatting_only(tmp_path):
+    lf_sha = hashlib.sha256(SOIL_LF).hexdigest()
+    entry, _ = soil_report(tmp_path, SOIL_CRLF, reference=SOIL_LF, recorded_sha=lf_sha)
+    assert entry["status"] == "formatting_only_difference"
+
+
+def test_identical_bytes_match_without_any_gcs_request(tmp_path):
+    manifest, c, bucket = soil_case(tmp_path, SOIL_CRLF)
+
+    class Boom(FakeBucket):
+        def get_blob(self, name):
+            raise AssertionError("no request expected when raw SHA-256 matches")
+
+    entry = sl.external_dependency_report(manifest, c, ro(Boom(bucket.objects)), sl.SnapshotSettings())["soilgrids_csv"]
+    assert entry["status"] == "matches_run_input"
+
+
+@pytest.mark.parametrize("old,new,what", [
+    (b"1.45", b"1.54", "converted_value"),          # measurement
+    (b"5-15cm", b"5-16cm", "depth"),
+    (b"g/cm3", b"kg/m3", "unit"),
+    (b"converted_value", b"converted_val", "column name"),
+])
+def test_genuine_changes_are_never_formatting_only(tmp_path, old, new, what):
+    assert old in SOIL_LF
+    entry, _ = soil_report(tmp_path, SOIL_LF.replace(old, new, 1))
+    assert entry["status"] == "differs_from_run_input", what
+
+
+def test_numeric_text_changes_and_dropped_rows_and_reordering_differ(tmp_path):
+    for local in (SOIL_LF.replace(b"1.45", b"1.450", 1),                  # same number, different text: conservative
+                  SOIL_LF.rsplit(b"\n", 2)[0] + b"\n",                      # last record removed
+                  SOIL_LF + b"bdod,0-5cm,1,1,g/cm3\n"):                     # record added
+        assert soil_report(tmp_path, local)[0]["status"] == "differs_from_run_input"
+    lines = SOIL_LF.split(b"\n")
+    swapped = b"\n".join([lines[0], lines[2], lines[1]] + lines[3:])
+    assert soil_report(tmp_path, swapped)[0]["status"] == "differs_from_run_input"
+
+
+def test_trailing_blank_lines_and_missing_final_newline_are_formatting_only(tmp_path):
+    assert soil_report(tmp_path, SOIL_LF + b"\n\n")[0]["status"] == "formatting_only_difference"
+    assert soil_report(tmp_path, SOIL_LF.rstrip(b"\n"))[0]["status"] == "formatting_only_difference"
+
+
+def test_missing_reference_object_is_unavailable_not_equivalent(tmp_path):
+    entry, _ = soil_report(tmp_path, SOIL_LF, reference=None, generation=5)
+    assert entry["status"] == "reference_unavailable" and "not found" in entry["comparison"]
+
+
+def test_reference_failing_its_recorded_sha256_is_not_trusted(tmp_path):
+    tampered = SOIL_CRLF.replace(b"1.45", b"9.99", 1)
+    entry, _ = soil_report(tmp_path, SOIL_LF.replace(b"1.45", b"9.99", 1), reference=tampered)
+    assert entry["status"] == "reference_unavailable" and "SHA-256" in entry["comparison"]
+
+
+def test_replaced_generation_is_unavailable(tmp_path):
+    entry, _ = soil_report(tmp_path, SOIL_LF, generation=99)           # bucket only has generation 1
+    assert entry["status"] == "reference_unavailable" and "generation" in entry["comparison"]
+
+
+def test_no_recorded_generation_is_unavailable(tmp_path):
+    manifest, c, bucket = soil_case(tmp_path, SOIL_LF)
+    del manifest["inputs"]["soilgrids_csv"]["generation"]
+    entry = sl.external_dependency_report(manifest, c, ro(bucket), sl.SnapshotSettings())["soilgrids_csv"]
+    assert entry["status"] == "reference_unavailable"
+
+
+def test_persistent_transient_failure_is_bounded_and_unavailable(tmp_path):
+    manifest, c, bucket = soil_case(tmp_path, SOIL_LF)
+    bucket.fail_reads("soilgrids", GcsError(503), times=1000)
+    calls = []
+    orig = bucket.get_blob
+    bucket.get_blob = lambda name: (calls.append(name), orig(name))[1]
+    entry = sl.external_dependency_report(manifest, c, ro(bucket), sl.SnapshotSettings(sleep=lambda x: None))["soilgrids_csv"]
+    assert entry["status"] == "reference_unavailable" and "transient" in entry["comparison"]
+    assert len(calls) == sl.REFERENCE_ATTEMPTS                         # one object, bounded attempts
+
+
+def test_one_transient_failure_recovers(tmp_path):
+    manifest, c, bucket = soil_case(tmp_path, SOIL_LF)
+    bucket.fail_reads("soilgrids", GcsError(503), times=1)
+    entry = sl.external_dependency_report(manifest, c, ro(bucket), sl.SnapshotSettings(sleep=lambda x: None))["soilgrids_csv"]
+    assert entry["status"] == "formatting_only_difference"
+
+
+def test_permission_failure_is_not_retried_and_is_unavailable(tmp_path):
+    manifest, c, bucket = soil_case(tmp_path, SOIL_LF)
+    bucket.fail_reads("soilgrids", GcsError(403), times=1000)
+    entry = sl.external_dependency_report(manifest, c, ro(bucket), sl.SnapshotSettings(sleep=lambda x: None))["soilgrids_csv"]
+    assert entry["status"] == "reference_unavailable" and "auth" in entry["comparison"]
+
+
+def test_unparseable_content_fails_closed(tmp_path):
+    binary = b"\xff\xfe\x00bad"
+    entry, _ = soil_report(tmp_path, binary + b"x", reference=binary, recorded_sha=hashlib.sha256(binary).hexdigest())
+    assert entry["status"] == "comparison_failed"
+
+
+def test_oversized_reference_is_never_downloaded(tmp_path, monkeypatch):
+    monkeypatch.setattr(sl, "MAX_REFERENCE_BYTES", 100)
+    entry, _ = soil_report(tmp_path, SOIL_LF)
+    assert entry["status"] == "reference_unavailable" and "too large" in entry["comparison"]
+
+
+def test_without_bucket_access_a_raw_mismatch_is_never_called_equivalent(tmp_path):
+    manifest, c, _ = soil_case(tmp_path, SOIL_LF)
+    entry = sl.external_dependency_report(manifest, c)["soilgrids_csv"]      # local mode / no ADC
+    assert entry["status"] == "differs_from_run_input" and "not_attempted" in entry["comparison"]
+
+
+def test_irrigation_events_keep_strict_raw_sha256_and_never_touch_the_bucket(tmp_path):
+    events, soil = tmp_path / "events.csv", tmp_path / "soil.csv"
+    soil.write_bytes(SOIL_CRLF)
+    events.write_bytes(EVENTS_CRLF := b"date,irrigation_mm\r\n2026-01-01,20\r\n")
+    lf = b"date,irrigation_mm\n2026-01-01,20\n"
+    manifest = {"inputs": {"irrigation_events_csv": {"object": "x", "generation": 1, "sha256": hashlib.sha256(lf).hexdigest()}}}
+
+    class Boom(FakeBucket):
+        def get_blob(self, name):
+            raise AssertionError("events must never be semantically compared")
+
+    entry = sl.external_dependency_report(manifest, SoilCfg(soil, events), ro(Boom()), sl.SnapshotSettings())["irrigation_events_csv"]
+    assert entry["status"] == "differs_from_run_input" and EVENTS_CRLF
+
+
+def test_refresh_provenance_carries_the_semantic_status(published, settings, tmp_path):
+    soil, events = tmp_path / "soil.csv", tmp_path / "events.csv"
+    ref = published[RUN_A][SOIL_OBJ]
+    soil.write_bytes(ref.replace(b"\n", b"\r\n"))                     # same records, different line endings
+    events.write_bytes(published[RUN_A]["data/manual/muthukur_irrigation_events.csv"])
+
+    class Cfg:
+        def __init__(self, base):
+            self._b = base
+
+        def path(self, k):
+            return {"soilgrids_csv": soil, "irrigation_events_csv": events}.get(k) or self._b.path(k)
+
+    assert sl.refresh(ro(make_bucket(published, RUN_A)), Cfg(get_config()), settings).status == "activated"
+    ext = sl.read_active(settings)[1]["external_dependencies"]["soilgrids_csv"]
+    assert ext["status"] == "formatting_only_difference"
+
+
 def test_provenance_reports_external_dependency_versions(published, cfg, settings):
     sl.refresh(ro(make_bucket(published, RUN_A)), cfg, settings)
     ext = sl.read_active(settings)[1]["external_dependencies"]
@@ -976,9 +1165,15 @@ def test_partial_downloads_never_survive_retries_or_success(published, cfg, sett
 
 # --- client / session lifetime --------------------------------------------------------------------------------------------------
 
+def soil_reference_reads(published, cfg):
+    recorded = json.loads(published[RUN_A]["pipeline-runs/%s/manifest.json" % RUN_A])["inputs"]["soilgrids_csv"]["sha256"]
+    return 0 if sl.sha256_file(cfg.path("soilgrids_csv")) == recorded else 1
+
+
 def test_each_request_uses_a_fresh_client_that_is_closed(published, cfg, settings, net):
     sl.refresh(net_bucket(net), cfg, settings)
     requests_made = 2 + 21 + 1                          # pointer + manifest + 21 outputs + post-activation pointer check
+    requests_made += soil_reference_reads(published, cfg)   # raw SoilGrids mismatch: ONE bounded reference read
     assert net.opened - 1 == requests_made              # minus the long-lived base bucket
     assert net.closed == requests_made
 
@@ -986,7 +1181,7 @@ def test_each_request_uses_a_fresh_client_that_is_closed(published, cfg, setting
 def test_failed_attempts_also_close_their_clients(published, cfg, settings, net):
     net.dl_faults.add(first_data_object(net), TimeoutError("t"), times=2)
     sl.refresh(net_bucket(net), cfg, settings)
-    assert net.closed == net.opened - 1 == 2 + 21 + 1 + 2   # incl. the 2 failed attempts
+    assert net.closed == net.opened - 1 == 2 + 21 + 1 + 2 + soil_reference_reads(published, cfg)   # incl. the 2 failed attempts
 
 
 def test_fresh_clients_can_be_disabled(published, cfg, settings, net):

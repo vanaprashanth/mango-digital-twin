@@ -597,3 +597,20 @@ def test_integration_does_not_touch_irrigation_persistence_or_scientific_code():
     assert 'IRRIGATION_EVENTS_PATH = config.path("irrigation_events_csv")' in src
     for p in (REPO / "src" / "irrigation").glob("*.py"):
         assert "data_source" not in p.read_text(encoding="utf-8"), p
+
+
+def _soil_notices(status):
+    prov = {"run_id": "R1", "external_dependencies": {"soilgrids_csv": {"status": status}}}
+    return [n for n in dsm.build_notices("gcs_snapshot", prov, [], {}, True) if n.text.startswith("SoilGrids soil data:")]
+
+
+def test_soilgrids_formatting_only_difference_is_not_a_warning():
+    (n,) = _soil_notices("formatting_only_difference")
+    assert n.level == "info" and not n.prominent and "only in formatting" in n.text
+
+
+def test_soilgrids_real_difference_and_unconfirmed_comparisons_keep_a_prominent_warning():
+    for status in ("differs_from_run_input", "reference_unavailable", "comparison_failed"):
+        (n,) = _soil_notices(status)
+        assert n.level == "warning" and n.prominent, status
+        assert "only in formatting" not in n.text

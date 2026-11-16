@@ -111,6 +111,15 @@ def build_notices(mode: str, provenance: Optional[dict[str, Any]], warnings: lis
                                       f"{label}: the local copy differs from the version this run "
                                       f"({provenance['run_id']}) was computed with. Snapshot outputs do not reflect "
                                       "the local data shown on other pages.", True))
+            elif status == "formatting_only_difference":
+                notices.append(Notice("info", f"{label}: the local copy differs from this run's input only in formatting "
+                                              "(for example line endings); the CSV records are identical to the "
+                                              "verified run input.", False))
+            elif status in ("reference_unavailable", "comparison_failed"):
+                notices.append(Notice("warning",
+                                      f"{label}: the local copy's bytes differ from the version this run "
+                                      f"({provenance['run_id']}) was computed with, and it could not be confirmed "
+                                      "whether the difference is only formatting. Treat it as different.", True))
             elif status == "local_file_missing":
                 notices.append(Notice("warning", f"{label}: the local file is missing; pages that need it will be unavailable.", True))
             elif status == "not_recorded_in_manifest":

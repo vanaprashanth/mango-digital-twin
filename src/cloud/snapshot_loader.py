@@ -33,8 +33,10 @@ Their versions are compared with the manifest and reported, never merged.
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import inspect
+import io
 import json
 import logging
 import os
@@ -446,11 +448,112 @@ def stage_snapshot(bucket, plan: list[PlannedFile], staging_dir: Path,
 
 # --- 4. provenance ------------------------------------------------------------------------------
 
-def external_dependency_report(manifest: dict[str, Any], base_config) -> dict[str, Any]:
+SEMANTIC_COMPARE_KEYS = ("soilgrids_csv",)       # NOT the irrigation events: their raw SHA-256 stays authoritative
+MAX_REFERENCE_BYTES = 1 << 20                     # a reference larger than this is never downloaded or parsed
+REFERENCE_ATTEMPTS = 2                            # one object, one request series, bounded
+
+
+def _csv_records(data: bytes) -> list[list[str]]:
+    """Parse CSV into exact string records. Only the record terminator (LF/CRLF), a UTF-8 BOM and
+    trailing blank lines are normalized; cell text, column names and order are compared verbatim."""
+    text = data.decode("utf-8-sig")
+    rows = list(csv.reader(io.StringIO(text, newline=""), strict=True))
+    while rows and not rows[-1]:
+        rows.pop()
+    if not rows:
+        raise ValueError("no CSV records")
+    return rows
+
+
+def _first_difference(a: list[list[str]], b: list[list[str]]) -> str:
+    if a[0] != b[0]:
+        return "column names/order differ"
+    if len(a) != len(b):
+        return f"row count differs ({len(a) - 1} local vs {len(b) - 1} in the run input)"
+    for i, (ra, rb) in enumerate(zip(a, b)):
+        if ra != rb:
+            cols = [a[0][j] if j < len(a[0]) else str(j) for j in range(max(len(ra), len(rb)))
+                    if (ra[j] if j < len(ra) else None) != (rb[j] if j < len(rb) else None)]
+            return f"record {i} differs in column(s): {', '.join(cols[:5])}"
+    return "records differ"
+
+
+def _read_reference(bucket, recorded: dict[str, Any], settings: "SnapshotSettings") -> bytes:
+    """The exact object generation the run recorded, via read-only access, verified against the recorded SHA-256.
+    The hash is only a check on the reference: equality of content is never inferred from hashes."""
+    name, gen, want = recorded.get("object"), recorded.get("generation"), recorded.get("sha256")
+    if not name or not isinstance(gen, int) or isinstance(gen, bool) or gen <= 0 or not want:
+        raise SnapshotError("the manifest does not record a pinned object generation for this input")
+    bounded = replace(settings, download_attempts=min(settings.download_attempts, REFERENCE_ATTEMPTS))
+
+    def once() -> bytes:
+        with _session(bucket, bounded) as b:
+            blob = call_supported(b.get_blob, name, generation=gen, timeout=bounded.request_timeout)
+            if blob is None:
+                raise SnapshotError(f"Run input generation {gen} of {name} was not found in Cloud Storage")
+            got = getattr(blob, "generation", None)
+            if got is not None and got != gen:
+                raise SnapshotError(f"{name}: bucket returned generation {got}, not the recorded {gen}")
+            size = getattr(blob, "size", None)
+            if isinstance(size, int) and size > MAX_REFERENCE_BYTES:
+                raise SnapshotError(f"{name} is {size} bytes; too large to compare")
+            return call_supported(blob.download_as_bytes, timeout=bounded.request_timeout, retry=None,
+                                  if_generation_match=gen)
+
+    data = _retry(once, f"Could not read run input {name}", bounded)
+    if len(data) > MAX_REFERENCE_BYTES:
+        raise SnapshotError(f"{name} is too large to compare")
+    if sha256_bytes(data) != want:
+        raise SnapshotError(f"Run input {name} (generation {gen}) does not match the SHA-256 the manifest recorded")
+    return data
+
+
+def _semantic_compare(entry: dict[str, Any], local: Path, recorded: dict[str, Any], bucket,
+                      settings: Optional["SnapshotSettings"]) -> None:
+    """Fill ``entry['status']`` for a local file whose raw SHA-256 differs from the run input's.
+
+    formatting_only_difference  - verified reference parses to identical records
+    differs_from_run_input      - verified reference, genuinely different records (or non-CSV bytes)
+    reference_unavailable       - no read-only access / object missing / transient failure / generation gone
+    comparison_failed           - the local or reference content could not be compared safely
+    """
+    entry["status"] = "differs_from_run_input"
+    if bucket is None:
+        entry["comparison"] = "not_attempted: no read-only bucket access"
+        return
+    try:
+        reference = _read_reference(bucket, recorded, settings or SnapshotSettings())
+    except Exception as exc:  # noqa: BLE001 - never let the comparison break a refresh
+        entry["status"] = "reference_unavailable"
+        entry["comparison"] = f"reference could not be read or verified: {type(exc).__name__}: {exc}"
+        return
+    entry["reference_verified_sha256"] = sha256_bytes(reference)
+    try:
+        if local.stat().st_size > MAX_REFERENCE_BYTES:
+            raise ValueError("local file too large to compare")
+        local_bytes = local.read_bytes()
+        a, b = _csv_records(local_bytes), _csv_records(reference)
+    except Exception as exc:  # noqa: BLE001 - undecodable, malformed CSV, unreadable
+        entry["status"] = "comparison_failed"
+        entry["comparison"] = f"content could not be parsed as CSV: {type(exc).__name__}: {exc}"
+        return
+    lf = lambda d: sha256_bytes(d.replace(b"\r\n", b"\n"))  # noqa: E731 - reporting only
+    entry["local_lf_normalized_sha256"], entry["reference_lf_normalized_sha256"] = lf(local_bytes), lf(reference)
+    if a == b:
+        entry["status"] = "formatting_only_difference"
+        entry["comparison"] = "identical CSV records; raw bytes differ only in formatting (e.g. line endings)"
+    else:
+        entry["comparison"] = _first_difference(a, b)
+
+
+def external_dependency_report(manifest: dict[str, Any], base_config, bucket=None,
+                               settings: Optional["SnapshotSettings"] = None) -> dict[str, Any]:
     """Compare the local copies of non-snapshot inputs with the versions the run used.
 
     Reported only; a difference never changes which run is served and is
-    never reconciled by mixing files.
+    never reconciled by mixing files. Raw SHA-256 equality is ``matches_run_input``. For SoilGrids
+    only, a raw mismatch is followed by one bounded read-only fetch of the recorded input
+    generation to tell formatting-only differences from real ones (see ``_semantic_compare``).
     """
     out: dict[str, Any] = {}
     for key in EXTERNAL_DEPENDENCY_KEYS:
@@ -468,7 +571,12 @@ def external_dependency_report(manifest: dict[str, Any], base_config) -> dict[st
             entry["status"] = "local_file_missing"
         else:
             entry["local_sha256"] = sha256_file(local)
-            entry["status"] = "matches_run_input" if entry["local_sha256"] == recorded.get("sha256") else "differs_from_run_input"
+            if entry["local_sha256"] == recorded.get("sha256"):
+                entry["status"] = "matches_run_input"
+            elif key in SEMANTIC_COMPARE_KEYS:
+                _semantic_compare(entry, local, recorded, bucket, settings)
+            else:
+                entry["status"] = "differs_from_run_input"
         out[key] = entry
     out["ml_model_and_unpublished_ml_artifacts"] = {
         "source": "local (not part of the snapshot)", "status": "not_versioned_by_snapshot"}
@@ -476,7 +584,8 @@ def external_dependency_report(manifest: dict[str, Any], base_config) -> dict[st
 
 
 def build_provenance(pointer, manifest, manifest_sha256: str, plan: list[PlannedFile], base_config,
-                     now: Callable[[], datetime] = publish.utc_now) -> dict[str, Any]:
+                     now: Callable[[], datetime] = publish.utc_now, bucket=None,
+                     settings: Optional["SnapshotSettings"] = None) -> dict[str, Any]:
     sat = {name: {"status": s.get("status"), "latest_observation_date": s.get("latest_observation_date")}
            for name, s in (manifest.get("satellite_data") or {}).items() if isinstance(s, dict)}
     sv = manifest["scientific_validation"]
@@ -496,7 +605,7 @@ def build_provenance(pointer, manifest, manifest_sha256: str, plan: list[Planned
         "validation_status": sv.get("status"),
         "field_validated": bool(sv.get("field_validated", False)),
         "integrity_note": INTEGRITY_NOTE,
-        "external_dependencies": external_dependency_report(manifest, base_config),
+        "external_dependencies": external_dependency_report(manifest, base_config, bucket, settings),
         "files": [{"key": p.key, "path": p.rel_path, "bytes": p.size, "sha256": p.sha256} for p in plan],
     }
 
@@ -637,7 +746,8 @@ def _refresh(bucket, base_config, settings, now) -> RefreshResult:
     staging.mkdir(parents=True)
     try:
         stage_snapshot(bucket, plan, staging, settings)
-        prov = build_provenance(pointer, manifest, sha256_bytes(manifest_bytes), plan, base_config, now)
+        prov = build_provenance(pointer, manifest, sha256_bytes(manifest_bytes), plan, base_config, now,
+                                bucket=bucket, settings=settings)
         _atomic_write_json(staging / PROVENANCE_FILE, prov)
         verify_snapshot_dir(staging)             # final whole-snapshot check before it can become visible
         activate(staging, run_id, settings)
