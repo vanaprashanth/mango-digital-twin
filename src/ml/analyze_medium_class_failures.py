@@ -347,11 +347,24 @@ def build_transition_analysis(full_df: pd.DataFrame, analysis: pd.DataFrame) -> 
 # Offline experiments (validation inside the training window only)
 # ---------------------------------------------------------------------------
 
+def argmax_labels(proba: pd.DataFrame, columns=None) -> np.ndarray:
+    """Most probable class per row, breaking exact ties the way the fitted model's predict() does.
+
+    scikit-learn returns ``classes_[argmax(proba)]``, and ``classes_`` is sorted
+    alphabetically (High, Low, Medium), so on an exact tie the alphabetically
+    first class wins. ``DataFrame.idxmax`` over the display order (Low, Medium,
+    High) would pick a different class on a tie (e.g. High == Low == 0.38), making
+    this analysis disagree with the production model's own prediction.
+    """
+    cols = sorted(c for c in (columns or CLASSES) if c in proba.columns)
+    return proba[cols].idxmax(axis=1).to_numpy(dtype=object)
+
+
 def apply_medium_threshold(proba: pd.DataFrame, threshold: float | None) -> np.ndarray:
     """Predict Medium when p(Medium) >= threshold, else argmax over Low/High. None -> plain argmax."""
     if threshold is None:
-        return proba[CLASSES].idxmax(axis=1).to_numpy(dtype=object)
-    others = proba[["Low", "High"]].idxmax(axis=1).to_numpy(dtype=object)
+        return argmax_labels(proba)
+    others = argmax_labels(proba, ["Low", "High"])
     return np.where(proba["Medium"].to_numpy() >= threshold, "Medium", others)
 
 

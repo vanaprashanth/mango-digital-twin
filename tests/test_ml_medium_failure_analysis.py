@@ -75,7 +75,21 @@ def test_probabilities_aligned_to_fixed_class_order_and_sum_to_one():
     assert list(pr.columns) == m.CLASSES and len(pr) == len(te)
     assert np.allclose(pr.sum(axis=1), 1.0)
     # column "High" really is the probability of High (not positional leakage from sklearn's order)
-    assert pr.idxmax(axis=1).tolist() == pipe.predict(te[X.columns]).tolist()
+    # (exact ties are broken like predict(): by classes_ order, see argmax_labels)
+    assert m.argmax_labels(pr).tolist() == pipe.predict(te[X.columns]).tolist()
+
+
+def test_argmax_labels_breaks_exact_ties_like_sklearn_predict():
+    """Regression: High == Low == 0.38 made DataFrame.idxmax (Low first) disagree with predict() (High)."""
+    pr = pd.DataFrame({"Low": [.38, .5, .2], "Medium": [.24, .1, .2], "High": [.38, .4, .6]})
+    assert pr[m.CLASSES].idxmax(axis=1).tolist()[0] == "Low"        # the naive result
+    assert m.argmax_labels(pr).tolist() == ["High", "Low", "High"]   # alphabetical first, as classes_[argmax]
+    assert m.apply_medium_threshold(pr, None).tolist()[0] == "High"
+    assert m.apply_medium_threshold(pr, 0.5).tolist()[0] == "High"
+    # agrees with sklearn's own rule on a tie
+    classes_ = np.array(sorted(m.CLASSES))
+    raw = pr[list(classes_)].to_numpy()
+    assert classes_[np.argmax(raw, axis=1)].tolist() == m.argmax_labels(pr).tolist()
 
 
 def test_align_proba_fills_zero_for_class_unseen_in_training():
