@@ -55,7 +55,7 @@ def cfg():
 
 @pytest.fixture
 def settings(tmp_path):
-    return sl.SnapshotSettings(cache_dir=tmp_path / "cache", project_root=REPO)
+    return sl.SnapshotSettings(cache_dir=tmp_path / "cache", project_root=REPO, sleep=lambda seconds: None)
 
 
 def ro(bucket):
@@ -274,7 +274,7 @@ def test_download_interrupted_midway_leaves_no_partial_snapshot(published, cfg, 
             def dl(path):
                 calls["n"] += 1
                 real(path)
-                if calls["n"] == 5:  # file 5 arrives half-written, then the connection drops
+                if calls["n"] >= 5:  # from file 5 on, every attempt arrives half-written, then the connection drops
                     Path(path).write_bytes(Path(path).read_bytes()[:3])
                     raise GcsError(503, "connection reset")
             blob.download_to_filename = dl
@@ -282,7 +282,8 @@ def test_download_interrupted_midway_leaves_no_partial_snapshot(published, cfg, 
 
     bucket.get_blob = flaky
     r = sl.refresh(ro(bucket), cfg, settings)
-    assert r.status == "failed" and "Download failed" in r.reason and calls["n"] == 5
+    assert r.status == "failed" and "Download failed for" in r.reason and "4 attempt(s)" in r.reason
+    assert calls["n"] == 4 + 4   # four files succeeded; the fifth was attempted 4 times (bounded) and then abandoned
     assert sl.read_active(settings) is None
     assert not (settings.cache_dir / "runs").exists() or not list((settings.cache_dir / "runs").iterdir())
     no_leftovers(settings)
@@ -589,3 +590,508 @@ def test_dashboard_and_production_requirements_are_untouched_by_the_loader():
         assert "snapshot_loader" not in p.read_text(encoding="utf-8"), p
     assert "google" not in (REPO / "requirements.txt").read_text(encoding="utf-8")
     assert not list((REPO / ".github").rglob("*snapshot*"))
+
+
+# =============================================================================
+# Network resilience: bounded retries, per-request timeouts, generation pinning,
+# fresh client sessions (src/cloud/snapshot_loader.py)
+# =============================================================================
+
+import errno  # noqa: E402
+
+import requests  # noqa: E402
+
+
+class _Faults:
+    """Per-object fault queue: entries are (exception, side_effect_or_None), consumed in order."""
+
+    def __init__(self):
+        self.q: dict[str, list] = {}
+
+    def add(self, name_part, exc, times=1, side_effect=None):
+        self.q.setdefault(name_part, []).extend([(exc, side_effect)] * times)
+
+    def take(self, name):
+        for part, items in self.q.items():
+            if part in name and items:
+                return items.pop(0)
+        return None
+
+
+class NetState:
+    def __init__(self, objects):
+        self.objects = dict(objects)
+        self.gens = {k: 1 for k in objects}
+        self.get_calls: list[tuple[str, dict]] = []
+        self.dl_calls: list[tuple[str, dict]] = []
+        self.dl_faults, self.get_faults, self.byte_faults = _Faults(), _Faults(), _Faults()
+        self.before_dl: dict[str, callable] = {}
+        self.opened = 0
+        self.closed = 0
+
+    def dl_count(self, part):
+        return sum(1 for n, _ in self.dl_calls if part in n)
+
+    def get_count(self, part):
+        return sum(1 for n, _ in self.get_calls if part in n)
+
+
+class NetBlob:
+    def __init__(self, st, name):
+        self.st, self.name = st, name
+
+    generation = property(lambda self: self.st.gens[self.name])
+    size = property(lambda self: len(self.st.objects[self.name]))
+
+    def download_as_bytes(self, timeout=None, retry=None):
+        fault = self.st.byte_faults.take(self.name)
+        if fault:
+            raise fault[0]
+        return self.st.objects[self.name]
+
+    def download_to_filename(self, filename, timeout=None, retry=None, if_generation_match=None, checksum="auto"):
+        st = self.st
+        st.dl_calls.append((self.name, {"timeout": timeout, "retry": retry, "if_generation_match": if_generation_match}))
+        assert not Path(filename).exists(), "an attempt must start without leftovers from the previous one"
+        for part, fn in list(st.before_dl.items()):
+            if part in self.name:
+                st.before_dl.pop(part)()
+        data = st.objects[self.name]
+        fault = st.dl_faults.take(self.name)
+        if fault:
+            Path(filename).write_bytes(data[: max(len(data) // 2, 1)])   # half-written file, then the failure
+            if fault[1]:
+                fault[1]()
+            raise fault[0]
+        if if_generation_match is not None and st.gens[self.name] != if_generation_match:
+            raise GcsError(412, "conditionNotMet")
+        Path(filename).write_bytes(data)
+
+
+class NetInner:
+    def __init__(self, st):
+        self.st = st
+
+    def get_blob(self, name, timeout=None):
+        self.st.get_calls.append((name, {"timeout": timeout}))
+        fault = self.st.get_faults.take(name)
+        if fault:
+            raise fault[0]
+        return NetBlob(self.st, name) if name in self.st.objects else None
+
+
+class NetClient:
+    def __init__(self, st):
+        self.st = st
+
+    def close(self):
+        self.st.closed += 1
+
+
+def net_bucket(st):
+    def factory():
+        st.opened += 1
+        return NetInner(st), NetClient(st)
+    return sl.ReadOnlyBucket(*factory(), factory)
+
+
+@pytest.fixture
+def net(published):
+    return NetState(published[RUN_A])
+
+
+def first_data_object(st):
+    return next(n for n in st.objects if "/data/processed/" in n and n.endswith("muthukur_weather_risk_scores.csv"))
+
+
+def leftovers(settings):
+    return [p for p in settings.cache_dir.rglob("*") if p.is_file() and p.name.endswith(".part")]
+
+
+def api_core():
+    return pytest.importorskip("google.api_core.exceptions")
+
+
+TRANSIENT_FACTORIES = {
+    "requests.ReadTimeout": lambda: requests.exceptions.ReadTimeout("Read timed out. (read timeout=60)"),
+    "requests.ConnectionError": lambda: requests.exceptions.ConnectionError("HTTPSConnectionPool: Max retries exceeded"),
+    "requests.ChunkedEncodingError": lambda: requests.exceptions.ChunkedEncodingError("IncompleteRead"),
+    "TimeoutError": lambda: TimeoutError("timed out"),
+    "ConnectionResetError": lambda: ConnectionResetError("reset by peer"),
+    "HTTP 503": lambda: GcsError(503, "backend error"),
+    "HTTP 429": lambda: GcsError(429, "slow down"),
+    "HTTP 408": lambda: GcsError(408, "request timeout"),
+    "api_core.RetryError (the reported failure)": lambda: api_core().RetryError(
+        "Timeout of 120.0s exceeded, last exception: HTTPSConnectionPool(host='storage.googleapis.com', port=443): Read timed out.",
+        cause=requests.exceptions.ReadTimeout("Read timed out")),
+    "api_core.ServiceUnavailable": lambda: api_core().ServiceUnavailable("503"),
+}
+
+
+# --- transient recovery ---------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name", list(TRANSIENT_FACTORIES))
+def test_transient_download_failure_recovers_with_backoff(published, cfg, settings, net, name):
+    sleeps = []
+    settings.sleep = sleeps.append
+    victim = first_data_object(net)
+    net.dl_faults.add(victim, TRANSIENT_FACTORIES[name](), times=2)
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "activated", r.reason
+    assert sleeps == [1.0, 2.0] and net.dl_count(victim) == 3
+    assert leftovers(settings) == [] and sl.read_active(settings)[1]["run_id"] == RUN_A
+    no_leftovers(settings)
+
+
+def test_pointer_and_manifest_reads_are_retried_too(published, cfg, settings, net):
+    net.byte_faults.add("latest.json", requests.exceptions.ReadTimeout("t"), times=2)
+    net.get_faults.add("manifest.json", requests.exceptions.ConnectionError("c"), times=1)
+    assert sl.refresh(net_bucket(net), cfg, settings).status == "activated"
+
+
+def test_every_request_carries_explicit_timeouts_and_no_library_retry(published, cfg, settings, net):
+    settings.connect_timeout, settings.read_timeout = 7.0, 21.0
+    sl.refresh(net_bucket(net), cfg, settings)
+    assert net.get_calls and all(kw["timeout"] == (7.0, 21.0) for _, kw in net.get_calls)
+    assert len(net.dl_calls) == 21
+    assert all(kw["timeout"] == (7.0, 21.0) and kw["retry"] is None for _, kw in net.dl_calls)
+
+
+# --- retry exhaustion --------------------------------------------------------------------------------------
+
+def test_retry_exhaustion_is_bounded_and_clean(published, cfg, settings, net):
+    sleeps = []
+    settings.sleep = sleeps.append
+    victim = first_data_object(net)
+    net.dl_faults.add(victim, requests.exceptions.ReadTimeout("Read timed out"), times=99)
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "failed" and "after 4 attempt(s) [transient]" in r.reason and victim in r.reason
+    assert net.dl_count(victim) == 4 and sleeps == [1.0, 2.0, 4.0]
+    assert sl.read_active(settings) is None and leftovers(settings) == []
+    assert not (settings.cache_dir / "runs").exists() or not list((settings.cache_dir / "runs").iterdir())
+    no_leftovers(settings)
+
+
+def test_attempt_count_is_configurable(published, cfg, settings, net):
+    settings.download_attempts = 2
+    victim = first_data_object(net)
+    net.dl_faults.add(victim, TimeoutError("t"), times=99)
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "failed" and net.dl_count(victim) == 2 and "after 2 attempt(s)" in r.reason
+    settings.download_attempts = 1
+    net2 = NetState(net.objects)
+    net2.dl_faults.add(victim, TimeoutError("t"), times=99)
+    assert sl.refresh(net_bucket(net2), cfg, settings).status == "failed" and net2.dl_count(victim) == 1
+
+
+def test_overall_deadline_stops_retrying(published, cfg, settings, net):
+    settings.overall_deadline_seconds = 0.5      # the first backoff (1.0s) would already exceed it
+    victim = first_data_object(net)
+    net.dl_faults.add(victim, TimeoutError("t"), times=99)
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "failed" and "overall deadline" in r.reason and net.dl_count(victim) == 1
+
+
+def test_retry_exhaustion_preserves_last_verified_snapshot(published, cfg, settings):
+    env_ = {"MANGOTWIN_DATA_SOURCE": "gcs_snapshot"}
+    sl.select_data_source(cfg, env_, settings, bucket_factory=lambda s: ro(make_bucket(published, RUN_A)))
+    run_dir, _ = sl.read_active(settings)
+    before = {p.relative_to(run_dir).as_posix(): p.read_bytes() for p in run_dir.rglob("*") if p.is_file()}
+    st = NetState(published[RUN_B])
+    st.dl_faults.add(f"pipeline-runs/{RUN_B}/data/processed/muthukur_weather_risk_scores.csv",
+                     requests.exceptions.ReadTimeout("t"), times=99)
+    ds = sl.select_data_source(cfg, env_, settings, bucket_factory=lambda s: net_bucket(st))
+    assert ds.mode == "gcs_snapshot" and ds.provenance["run_id"] == RUN_A
+    assert any("refresh failed" in w.lower() for w in ds.warnings)
+    assert {p.relative_to(run_dir).as_posix(): p.read_bytes() for p in run_dir.rglob("*") if p.is_file()} == before
+    assert not (settings.cache_dir / "runs" / RUN_B).exists() and leftovers(settings) == []
+    no_leftovers(settings)
+
+
+# --- non-transient failures are NOT retried ----------------------------------------------------------------------
+
+class DataCorruption(Exception):
+    """Same class name as google.resumable_media.DataCorruption (checksum mismatch during download)."""
+
+
+PERMANENT_FACTORIES = {
+    "HTTP 403": lambda: GcsError(403, "forbidden"),
+    "HTTP 401": lambda: GcsError(401, "unauthenticated"),
+    "HTTP 404": lambda: GcsError(404, "not found"),
+    "HTTP 400": lambda: GcsError(400, "bad request"),
+    "api_core.Forbidden": lambda: api_core().Forbidden("denied"),
+    "auth RefreshError name": lambda: type("RefreshError", (Exception,), {})("token refresh failed"),
+    "DataCorruption (library checksum)": lambda: DataCorruption("md5/crc32c mismatch"),
+    "disk full": lambda: OSError(errno.ENOSPC, "No space left on device"),
+    "bug": lambda: ValueError("unexpected"),
+}
+
+
+@pytest.mark.parametrize("name", list(PERMANENT_FACTORIES))
+def test_non_transient_errors_are_not_retried(published, cfg, settings, net, name):
+    sleeps = []
+    settings.sleep = sleeps.append
+    victim = first_data_object(net)
+    net.dl_faults.add(victim, PERMANENT_FACTORIES[name](), times=99)
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "failed" and "not retried" in r.reason, r.reason
+    assert net.dl_count(victim) == 1 and sleeps == [] and leftovers(settings) == []
+    assert sl.read_active(settings) is None
+
+
+def test_auth_failure_message_points_at_adc_not_keys(published, cfg, settings, net):
+    net.get_faults.add("latest.json", GcsError(403, "forbidden"))
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "failed" and "Application Default Credentials" in r.reason and "key" not in r.reason.lower().replace("keys", "")
+    assert net.get_count("latest.json") == 1
+
+
+def test_checksum_mismatch_is_not_retried(published, cfg, settings, net):
+    victim = first_data_object(net)
+    data = bytearray(net.objects[victim])
+    data[0] ^= 0x01
+    net.objects[victim] = bytes(data)
+    sleeps = []
+    settings.sleep = sleeps.append
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "failed" and "SHA-256 mismatch" in r.reason
+    assert net.dl_count(victim) == 1 and sleeps == [] and leftovers(settings) == []
+
+
+def test_size_mismatch_is_detected_from_metadata_without_downloading(published, cfg, settings, net):
+    victim = first_data_object(net)
+    net.objects[victim] += b"x"
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "failed" and "Size mismatch" in r.reason and net.dl_count(victim) == 0
+
+
+def test_missing_object_and_invalid_manifest_are_not_retried(published, cfg, settings, net):
+    sleeps = []
+    settings.sleep = sleeps.append
+    victim = first_data_object(net)
+    del net.objects[victim]
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "failed" and "not found" in r.reason and net.get_count(victim) == 1 and sleeps == []
+
+    st2 = NetState(published[RUN_A])
+    manifest_name = publish.manifest_object(RUN_A)
+    bad = json.loads(st2.objects[manifest_name])
+    bad["pipeline_status"] = "failed"
+    repoint_state(st2, RUN_A, publish.canonical_json(bad))
+    r2 = sl.refresh(net_bucket(st2), cfg, settings)
+    assert r2.status == "failed" and "Manifest invalid" in r2.reason
+    assert st2.get_count("manifest.json") == 1 and sleeps == []
+
+
+def repoint_state(st, rid, manifest_bytes):
+    st.objects[publish.manifest_object(rid)] = manifest_bytes
+    ptr = json.loads(st.objects[LATEST])
+    ptr["manifest_sha256"] = hashlib.sha256(manifest_bytes).hexdigest()
+    st.objects[LATEST] = publish.canonical_json(ptr)
+
+
+def test_missing_required_output_is_not_retried(published, cfg, settings, net):
+    m = json.loads(net.objects[publish.manifest_object(RUN_A)])
+    m["outputs"] = [o for o in m["outputs"] if o["key"] != "combined_feature_table_csv"]
+    m["output_counts"]["files"] = len(m["outputs"])
+    repoint_state(net, RUN_A, publish.canonical_json(m))
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "failed" and "combined_feature_table_csv" in r.reason and not net.dl_calls
+
+
+# --- generation pinning ------------------------------------------------------------------------------------------------
+
+def test_downloads_are_pinned_to_the_observed_generation(published, cfg, settings, net):
+    for name in list(net.gens):
+        net.gens[name] = 1000 + len(name)             # distinct, realistic-looking generations
+    sl.refresh(net_bucket(net), cfg, settings)
+    assert len(net.dl_calls) == 21
+    for name, kw in net.dl_calls:
+        assert kw["if_generation_match"] == net.gens[name], name
+
+
+def test_object_replaced_between_metadata_and_download_is_rejected(published, cfg, settings, net):
+    sleeps = []
+    settings.sleep = sleeps.append
+    victim = first_data_object(net)
+
+    def replace():
+        net.objects[victim] = b"a different object written in between"
+        net.gens[victim] += 1
+
+    net.before_dl[victim] = replace
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "failed" and "replaced" in r.reason and "not retried" in r.reason
+    assert net.dl_count(victim) == 1 and sleeps == [] and sl.read_active(settings) is None
+    assert leftovers(settings) == []
+
+
+def test_object_replaced_between_attempts_is_rejected(published, cfg, settings, net):
+    victim = first_data_object(net)
+
+    def replace():
+        net.gens[victim] += 1                         # same bytes, new generation: still not the object we pinned
+
+    net.dl_faults.add(victim, requests.exceptions.ReadTimeout("t"), times=1, side_effect=replace)
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "failed" and "replaced between download attempts" in r.reason
+    assert net.dl_count(victim) == 1 and sl.read_active(settings) is None
+
+
+def test_manifest_declared_generation_is_enforced_when_present(published, cfg, settings, net):
+    m = json.loads(net.objects[publish.manifest_object(RUN_A)])
+    m["outputs"][0]["generation"] = 99
+    repoint_state(net, RUN_A, publish.canonical_json(m))
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "failed" and "manifest generation 99" in r.reason
+
+    ok = NetState(published[RUN_A])
+    m2 = json.loads(ok.objects[publish.manifest_object(RUN_A)])
+    for o in m2["outputs"]:
+        o["generation"] = ok.gens[o["object"]]
+    repoint_state(ok, RUN_A, publish.canonical_json(m2))
+    assert sl.refresh(net_bucket(ok), cfg, settings).status == "activated"
+
+
+@pytest.mark.parametrize("bad", [0, -3, "7", True, 1.5])
+def test_malformed_manifest_generation_is_rejected(published, cfg, settings, net, bad):
+    m = json.loads(net.objects[publish.manifest_object(RUN_A)])
+    m["outputs"][0]["generation"] = bad
+    repoint_state(net, RUN_A, publish.canonical_json(m))
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "failed" and "not a positive integer" in r.reason and not net.dl_calls
+
+
+# --- partial files ---------------------------------------------------------------------------------------------------------------
+
+def test_partial_downloads_never_survive_retries_or_success(published, cfg, settings, net):
+    victim = first_data_object(net)
+    net.dl_faults.add(victim, requests.exceptions.ReadTimeout("t"), times=3)   # the fake asserts a clean start each attempt
+    r = sl.refresh(net_bucket(net), cfg, settings)
+    assert r.status == "activated" and leftovers(settings) == []
+    run_dir, prov = sl.read_active(settings)
+    assert sl.verify_snapshot_dir(run_dir)["run_id"] == RUN_A
+    assert not [p for p in run_dir.rglob("*") if p.suffix == ".part"]
+
+
+# --- client / session lifetime --------------------------------------------------------------------------------------------------
+
+def test_each_request_uses_a_fresh_client_that_is_closed(published, cfg, settings, net):
+    sl.refresh(net_bucket(net), cfg, settings)
+    requests_made = 2 + 21 + 1                          # pointer + manifest + 21 outputs + post-activation pointer check
+    assert net.opened - 1 == requests_made              # minus the long-lived base bucket
+    assert net.closed == requests_made
+
+
+def test_failed_attempts_also_close_their_clients(published, cfg, settings, net):
+    net.dl_faults.add(first_data_object(net), TimeoutError("t"), times=2)
+    sl.refresh(net_bucket(net), cfg, settings)
+    assert net.closed == net.opened - 1 == 2 + 21 + 1 + 2   # incl. the 2 failed attempts
+
+
+def test_fresh_clients_can_be_disabled(published, cfg, settings, net):
+    settings.fresh_client_per_request = False
+    assert sl.refresh(net_bucket(net), cfg, settings).status == "activated"
+    assert net.opened == 1 and net.closed == 0
+
+
+def test_close_errors_never_mask_the_result(published, cfg, settings, net):
+    class BadClose(NetClient):
+        def close(self):
+            raise RuntimeError("close failed")
+
+    def factory():
+        net.opened += 1
+        return NetInner(net), BadClose(net)
+
+    assert sl.refresh(sl.ReadOnlyBucket(*factory(), factory), cfg, settings).status == "activated"
+
+
+def test_open_readonly_bucket_builds_fresh_clients_from_one_set_of_adc(monkeypatch):
+    created, closed, default_calls = [], [], []
+
+    def default(scopes=None):
+        default_calls.append(scopes)
+        return "CREDS", "proj"
+
+    _fake_google(monkeypatch, default)
+    import google.cloud.storage as fake_storage
+
+    class Client:
+        def __init__(self, credentials=None, project=None):
+            created.append((credentials, project))
+
+        def bucket(self, name):
+            return FakeBucket(GOOD_BUCKET)
+
+        def close(self):
+            closed.append(1)
+
+    monkeypatch.setattr(fake_storage, "Client", Client)
+    bucket = sl.open_readonly_bucket()
+    fresh = bucket.fresh()
+    assert fresh is not bucket and len(created) == 2 and default_calls == [[sl.READ_ONLY_SCOPE]]
+    assert {c for c, _ in created} == {"CREDS"}           # same ADC, new client/session each time
+    fresh.close()
+    assert closed == [1]
+    assert sl.ReadOnlyBucket(FakeBucket(GOOD_BUCKET)).fresh() is not None   # no factory: no-op, still usable
+
+
+# --- backward compatibility + classification -----------------------------------------------------------------------------------
+
+def test_call_supported_filters_unsupported_keywords():
+    def legacy(path):
+        return path
+
+    def modern(path, timeout=None, retry=0, if_generation_match=None):
+        return (path, timeout, retry, if_generation_match)
+
+    def generic(path, **kw):
+        return kw
+
+    assert sl.call_supported(legacy, "p", timeout=1, retry=None, if_generation_match=3) == "p"
+    assert sl.call_supported(modern, "p", timeout=1, retry=None, if_generation_match=3) == ("p", 1, None, 3)
+    assert sl.call_supported(generic, "p", timeout=1) == {"timeout": 1}
+
+
+def test_legacy_fakes_without_new_keywords_still_work(published, cfg, settings):
+    assert sl.refresh(ro(make_bucket(published, RUN_A)), cfg, settings).status == "activated"
+
+
+@pytest.mark.parametrize("exc,expected", [
+    (requests.exceptions.ReadTimeout("t"), "transient"),
+    (requests.exceptions.ConnectionError("c"), "transient"),
+    (TimeoutError(), "transient"),
+    (GcsError(500), "transient"), (GcsError(503), "transient"), (GcsError(429), "transient"),
+    (GcsError(412), "replaced"), (GcsError(401), "auth"), (GcsError(403), "auth"),
+    (GcsError(404), "permanent"), (GcsError(400), "permanent"),
+    (DataCorruption("x"), "permanent"), (OSError(errno.ENOSPC, "full"), "permanent"),
+    (ValueError("x"), "permanent"), (sl.SnapshotError("x"), "permanent"),
+])
+def test_error_classification(exc, expected):
+    assert sl.classify_download_error(exc) == expected
+
+
+def test_network_settings_from_environment():
+    s = sl.settings_from_env({})
+    assert (s.download_attempts, s.connect_timeout, s.read_timeout, s.fresh_client_per_request) == (4, 10.0, 30.0, True)
+    s = sl.settings_from_env({"MANGOTWIN_SNAPSHOT_DOWNLOAD_ATTEMPTS": "6", "MANGOTWIN_SNAPSHOT_CONNECT_TIMEOUT_SECONDS": "5",
+                              "MANGOTWIN_SNAPSHOT_READ_TIMEOUT_SECONDS": "45.5", "MANGOTWIN_SNAPSHOT_DEADLINE_SECONDS": "120",
+                              "MANGOTWIN_SNAPSHOT_FRESH_CLIENT": "false"})
+    assert (s.download_attempts, s.connect_timeout, s.read_timeout, s.overall_deadline_seconds, s.fresh_client_per_request) == (6, 5.0, 45.5, 120.0, False)
+
+
+@pytest.mark.parametrize("name,value", [
+    ("MANGOTWIN_SNAPSHOT_DOWNLOAD_ATTEMPTS", "0"), ("MANGOTWIN_SNAPSHOT_DOWNLOAD_ATTEMPTS", "99"),
+    ("MANGOTWIN_SNAPSHOT_DOWNLOAD_ATTEMPTS", "three"), ("MANGOTWIN_SNAPSHOT_READ_TIMEOUT_SECONDS", "-1"),
+    ("MANGOTWIN_SNAPSHOT_CONNECT_TIMEOUT_SECONDS", "abc"), ("MANGOTWIN_SNAPSHOT_FRESH_CLIENT", "maybe"),
+])
+def test_bad_network_settings_are_rejected(name, value):
+    with pytest.raises(sl.SnapshotError, match="Refusing to guess|must be between"):
+        sl.settings_from_env({name: value})
+
+
+def test_loader_uses_only_public_client_apis():
+    src = (REPO / "src" / "cloud" / "snapshot_loader.py").read_text(encoding="utf-8")
+    assert "._http" not in src and "_http." not in src and "AuthorizedSession" not in src
+    assert ".close()" in src and "if_generation_match" in src and "retry=None" in src

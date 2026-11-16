@@ -34,13 +34,15 @@ Their versions are compared with the manifest and reported, never merged.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import logging
 import os
 import shutil
 import threading
 import time
-from dataclasses import dataclass, field
+from contextlib import contextmanager
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -79,6 +81,19 @@ class SnapshotSettings:
     keep: int = 3                      # verified runs kept on disk (active one is never pruned)
     allow_downgrade: bool = False      # moving to an OLDER run than the active one needs this
     project_root: Path = PROJECT_ROOT
+    # --- network behaviour (all bounded) ---
+    download_attempts: int = 4                        # per object / per read, transient failures only
+    connect_timeout: float = 10.0                     # seconds, per request
+    read_timeout: float = 30.0                        # seconds, per request
+    retry_backoff_seconds: float = 1.0                # doubles each retry
+    overall_deadline_seconds: float = 600.0           # whole refresh gives up after this
+    fresh_client_per_request: bool = True             # new client + HTTP session per request, closed after
+    sleep: Callable[[float], None] = field(default=time.sleep, repr=False)
+    clock: Callable[[], float] = field(default=time.monotonic, repr=False)
+
+    @property
+    def request_timeout(self) -> tuple[float, float]:
+        return (self.connect_timeout, self.read_timeout)
 
 
 @dataclass(frozen=True)
@@ -88,9 +103,26 @@ class PlannedFile:
     rel_path: str      # repo-relative, e.g. data/processed/x.csv (from config, not from the manifest)
     size: int
     sha256: str
+    generation: Optional[int] = None   # only if the manifest declares one (current publisher does not)
 
 
 # --- read-only bucket access --------------------------------------------------
+
+def call_supported(fn, *args, **kwargs):
+    """Call ``fn`` passing only the keyword arguments its signature accepts.
+
+    Real google-cloud-storage methods accept ``timeout``/``retry``/``if_generation_match``;
+    simple mocked clients that predate them keep working unchanged.
+    """
+    try:
+        params = inspect.signature(fn).parameters.values()
+    except (TypeError, ValueError):
+        return fn(*args, **kwargs)
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params):
+        return fn(*args, **kwargs)
+    names = {p.name for p in params}
+    return fn(*args, **{k: v for k, v in kwargs.items() if k in names})
+
 
 class _ReadOnlyBlob:
     """Exposes only what verification needs; no upload/delete/patch methods."""
@@ -101,20 +133,38 @@ class _ReadOnlyBlob:
     generation = property(lambda self: self._blob.generation)
     size = property(lambda self: self._blob.size)
 
-    def download_as_bytes(self):
-        return self._blob.download_as_bytes()
+    def download_as_bytes(self, **kwargs):
+        return call_supported(self._blob.download_as_bytes, **kwargs)
 
-    def download_to_filename(self, path):
-        return self._blob.download_to_filename(path)
+    def download_to_filename(self, path, **kwargs):
+        return call_supported(self._blob.download_to_filename, path, **kwargs)
 
 
 class ReadOnlyBucket:
-    def __init__(self, bucket):
-        self._bucket = bucket
+    """Read-only view of a bucket.
 
-    def get_blob(self, name):
-        blob = self._bucket.get_blob(name)
+    ``factory`` (optional) returns a new ``(bucket, client)`` pair; ``fresh()`` uses it so
+    callers can give each request its own client and HTTP session, and ``close()`` releases
+    them through the client's public ``close()``. Without a factory both are no-ops.
+    """
+
+    def __init__(self, bucket, client=None, factory: Optional[Callable[[], tuple[Any, Any]]] = None):
+        self._bucket, self._client, self._factory = bucket, client, factory
+
+    def get_blob(self, name, **kwargs):
+        blob = call_supported(self._bucket.get_blob, name, **kwargs)
         return None if blob is None else _ReadOnlyBlob(blob)
+
+    def fresh(self) -> "ReadOnlyBucket":
+        if self._factory is None:
+            return self
+        bucket, client = self._factory()
+        return ReadOnlyBucket(bucket, client, self._factory)
+
+    def close(self) -> None:
+        close = getattr(self._client, "close", None)
+        if callable(close):
+            close()
 
 
 def open_readonly_bucket(bucket_name: str = DEFAULT_BUCKET, project: Optional[str] = None):
@@ -122,6 +172,8 @@ def open_readonly_bucket(bucket_name: str = DEFAULT_BUCKET, project: Optional[st
 
     Locally, run ``gcloud auth application-default login`` once. Raises
     SnapshotError if no ADC are available (callers then fall back to local mode).
+    Credentials are resolved once; each ``fresh()`` bucket gets a new ``storage.Client``
+    (new HTTP session) that uses them and is closed with ``close()``.
     """
     try:
         import google.auth
@@ -133,8 +185,95 @@ def open_readonly_bucket(bucket_name: str = DEFAULT_BUCKET, project: Optional[st
     except Exception as exc:  # noqa: BLE001 - google.auth.exceptions.DefaultCredentialsError et al.
         raise SnapshotError(f"No Application Default Credentials available ({type(exc).__name__}). "
                             "Run 'gcloud auth application-default login' for local development.") from exc
-    client = storage.Client(credentials=credentials, project=project or default_project)
-    return ReadOnlyBucket(client.bucket(bucket_name))
+
+    def make() -> tuple[Any, Any]:
+        client = storage.Client(credentials=credentials, project=project or default_project)
+        return client.bucket(bucket_name), client
+
+    bucket, client = make()
+    return ReadOnlyBucket(bucket, client, make)
+
+
+@contextmanager
+def _session(bucket, settings: "SnapshotSettings"):
+    """A bucket for ONE request: fresh client/session when supported, closed afterwards."""
+    fresh = getattr(bucket, "fresh", None) if settings.fresh_client_per_request else None
+    session = fresh() if callable(fresh) else bucket
+    try:
+        yield session
+    finally:
+        if session is not bucket:
+            try:
+                session.close()
+            except Exception as exc:  # noqa: BLE001 - closing must never mask the real result
+                log.debug("Ignoring error while closing a storage client: %s", exc)
+
+
+# --- transient-failure classification and bounded retry ------------------------------
+
+_TRANSIENT_NAMES = frozenset({
+    "RetryError", "DeadlineExceeded", "ServiceUnavailable", "InternalServerError", "BadGateway", "GatewayTimeout",
+    "TooManyRequests", "ServerError", "ReadTimeout", "ConnectTimeout", "Timeout", "ConnectionError",
+    "ChunkedEncodingError", "ProtocolError", "IncompleteRead", "ReadTimeoutError", "ConnectTimeoutError",
+    "TransportError", "ConnectionResetError", "ConnectionAbortedError", "BrokenPipeError",
+})
+_AUTH_NAMES = frozenset({"Unauthenticated", "Forbidden", "RefreshError", "DefaultCredentialsError", "PermissionDenied"})
+
+
+def classify_download_error(exc: BaseException) -> str:
+    """'transient' (retry), 'auth', 'replaced' (generation precondition) or 'permanent'.
+
+    Only network-level and HTTP 408/429/5xx failures are transient. Everything unknown is
+    permanent: fail closed rather than retry something we do not understand.
+    """
+    if isinstance(exc, SnapshotError):
+        return "permanent"
+    names = {c.__name__ for c in type(exc).__mro__}
+    code = getattr(exc, "code", None)
+    if isinstance(code, int):
+        if code == 412:
+            return "replaced"
+        if code in (401, 403):
+            return "auth"
+        if code in (408, 429) or code >= 500:
+            return "transient"
+        return "permanent"
+    if names & _AUTH_NAMES:
+        return "auth"
+    if names & _TRANSIENT_NAMES or isinstance(exc, (TimeoutError, ConnectionError)):
+        return "transient"
+    return "permanent"      # includes DataCorruption (checksum mismatch), disk errors, bugs
+
+
+def _retry(fn: Callable[[], Any], label: str, settings: "SnapshotSettings", started: Optional[float] = None) -> Any:
+    """Run ``fn`` with bounded retries of transient failures only.
+
+    SnapshotError and non-transient errors propagate immediately (wrapped with context).
+    """
+    started = settings.clock() if started is None else started
+    attempts = max(int(settings.download_attempts), 1)
+    last: Optional[BaseException] = None
+    for i in range(attempts):
+        try:
+            return fn()
+        except SnapshotError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - classified below
+            kind = classify_download_error(exc)
+            if kind != "transient":
+                hint = {"auth": " Check Application Default Credentials / bucket read access.",
+                        "replaced": " The object was replaced after its metadata was read (generation precondition failed)."}.get(kind, "")
+                raise SnapshotError(f"{label} (not retried, {kind}): {type(exc).__name__}: {exc}.{hint}") from exc
+            last = exc
+            if i == attempts - 1:
+                break
+            delay = settings.retry_backoff_seconds * (2 ** i)
+            if settings.clock() - started + delay > settings.overall_deadline_seconds:
+                raise SnapshotError(f"{label}: overall deadline of {settings.overall_deadline_seconds:.0f}s exceeded "
+                                    f"after {i + 1} attempt(s): {type(exc).__name__}: {exc}") from exc
+            log.warning("%s: transient %s (attempt %d/%d); retrying in %.1fs", label, type(exc).__name__, i + 1, attempts, delay)
+            settings.sleep(delay)
+    raise SnapshotError(f"{label} after {attempts} attempt(s) [transient]: {type(last).__name__}: {last}") from last
 
 
 # --- helpers ------------------------------------------------------------------------
@@ -151,16 +290,17 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _read(bucket, name: str) -> bytes:
-    try:
-        blob = bucket.get_blob(name)
-        if blob is None:
-            raise SnapshotError(f"Object not found in Cloud Storage: {name}")
-        return blob.download_as_bytes()
-    except SnapshotError:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        raise SnapshotError(f"Could not read {name}: {type(exc).__name__}: {exc}") from exc
+def _read(bucket, name: str, settings: Optional["SnapshotSettings"] = None) -> bytes:
+    settings = settings or SnapshotSettings()
+
+    def once() -> bytes:
+        with _session(bucket, settings) as b:
+            blob = call_supported(b.get_blob, name, timeout=settings.request_timeout)
+            if blob is None:
+                raise SnapshotError(f"Object not found in Cloud Storage: {name}")
+            return call_supported(blob.download_as_bytes, timeout=settings.request_timeout, retry=None)
+
+    return _retry(once, f"Could not read {name}", settings)
 
 
 # --- 1. resolve pointer + manifest ------------------------------------------------------
@@ -171,13 +311,13 @@ def fetch_verified_manifest(bucket, settings: SnapshotSettings) -> tuple[dict[st
     Returns (pointer, manifest, manifest_bytes). Consumed pointer fields:
     schema_version, run_id, manifest_object, manifest_sha256.
     """
-    pointer_bytes = _read(bucket, publish.latest_object(settings.runs_prefix))
+    pointer_bytes = _read(bucket, publish.latest_object(settings.runs_prefix), settings)
     try:
         pointer = publish.parse_pointer(pointer_bytes, settings.runs_prefix)
     except publish.PublishError as exc:
         raise SnapshotError(f"latest.json is unusable: {exc}") from exc
 
-    manifest_bytes = _read(bucket, pointer["manifest_object"])
+    manifest_bytes = _read(bucket, pointer["manifest_object"], settings)
     actual = sha256_bytes(manifest_bytes)
     if actual != pointer["manifest_sha256"]:
         raise SnapshotError(
@@ -230,7 +370,11 @@ def plan_files(manifest: dict[str, Any], config, settings: SnapshotSettings) -> 
         if not out["object"].startswith(prefix):
             problems.append(f"{key}: object {out['object']!r} is outside run prefix {prefix}")
             continue
-        plan.append(PlannedFile(key, out["object"], rel, int(out["bytes"]), out["sha256"]))
+        gen = out.get("generation")
+        if gen is not None and (not isinstance(gen, int) or isinstance(gen, bool) or gen <= 0):
+            problems.append(f"{key}: manifest generation {gen!r} is not a positive integer")
+            continue
+        plan.append(PlannedFile(key, out["object"], rel, int(out["bytes"]), out["sha256"], gen))
     missing = [k for k in MUST_EXIST_KEYS if k not in seen_keys]
     if missing:
         problems.append("required output(s) absent from the manifest: " + ", ".join(missing))
@@ -241,28 +385,63 @@ def plan_files(manifest: dict[str, Any], config, settings: SnapshotSettings) -> 
 
 # --- 3. stage + verify ------------------------------------------------------------------------
 
-def stage_snapshot(bucket, plan: list[PlannedFile], staging_dir: Path) -> None:
+def _download_file(bucket, pf: PlannedFile, target: Path, settings: "SnapshotSettings", started: float) -> None:
+    """Download one object to ``target`` with bounded transient retries, pinned to one generation.
+
+    The bytes go to ``<target>.part`` and are renamed into place only after size and
+    SHA-256 both match the manifest, so a failed or retried attempt never leaves a
+    corrupt file under its final name. Only transient network failures are retried.
+    """
+    part = target.with_name(target.name + ".part")
+    seen_generation: list[Optional[int]] = []
+
+    def once() -> None:
+        part.unlink(missing_ok=True)                 # never resume from / keep a partial file
+        with _session(bucket, settings) as b:
+            blob = call_supported(b.get_blob, pf.object, timeout=settings.request_timeout)
+            if blob is None:
+                raise SnapshotError(f"Object not found in Cloud Storage: {pf.object}")
+            gen = getattr(blob, "generation", None)
+            if pf.generation is not None and gen != pf.generation:
+                raise SnapshotError(f"Object {pf.object} was replaced: manifest generation {pf.generation}, "
+                                    f"bucket has {gen}.")
+            if seen_generation and seen_generation[0] != gen:
+                raise SnapshotError(f"Object {pf.object} was replaced between download attempts "
+                                    f"(generation {seen_generation[0]} -> {gen}).")
+            seen_generation[:] = [gen]
+            size = getattr(blob, "size", None)
+            if isinstance(size, int) and size != pf.size:
+                raise SnapshotError(f"Size mismatch for {pf.object}: manifest {pf.size} bytes, object in Cloud "
+                                    f"Storage has {size}.")
+            kwargs: dict[str, Any] = {"timeout": settings.request_timeout, "retry": None}   # we own the retry policy
+            if gen is not None:
+                kwargs["if_generation_match"] = gen   # fail (412) rather than fetch a replaced object
+            call_supported(blob.download_to_filename, str(part), **kwargs)
+
+    try:
+        _retry(once, f"Download failed for {pf.object}", settings, started)
+        if not part.is_file():
+            raise SnapshotError(f"Download produced no file for {pf.object}")
+        size = part.stat().st_size
+        if size != pf.size:
+            raise SnapshotError(f"Size mismatch for {pf.object}: manifest {pf.size} bytes, downloaded {size} (partial or corrupt).")
+        digest = sha256_file(part)
+        if digest != pf.sha256:
+            raise SnapshotError(f"SHA-256 mismatch for {pf.object}: manifest {pf.sha256}, downloaded {digest}.")
+        os.replace(part, target)
+    finally:
+        part.unlink(missing_ok=True)
+
+
+def stage_snapshot(bucket, plan: list[PlannedFile], staging_dir: Path,
+                   settings: Optional["SnapshotSettings"] = None) -> None:
     """Download every planned file into staging and verify size + SHA-256. Raises on any mismatch."""
+    settings = settings or SnapshotSettings()
+    started = settings.clock()
     for pf in plan:
         target = staging_dir / pf.rel_path
         target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            blob = bucket.get_blob(pf.object)
-            if blob is None:
-                raise SnapshotError(f"Object not found in Cloud Storage: {pf.object}")
-            blob.download_to_filename(str(target))
-        except SnapshotError:
-            raise
-        except Exception as exc:  # noqa: BLE001 - interrupted / partial transfers land here
-            raise SnapshotError(f"Download failed for {pf.object}: {type(exc).__name__}: {exc}") from exc
-        if not target.is_file():
-            raise SnapshotError(f"Download produced no file for {pf.object}")
-        size = target.stat().st_size
-        if size != pf.size:
-            raise SnapshotError(f"Size mismatch for {pf.object}: manifest {pf.size} bytes, downloaded {size} (partial or corrupt).")
-        digest = sha256_file(target)
-        if digest != pf.sha256:
-            raise SnapshotError(f"SHA-256 mismatch for {pf.object}: manifest {pf.sha256}, downloaded {digest}.")
+        _download_file(bucket, pf, target, settings, started)
 
 
 # --- 4. provenance ------------------------------------------------------------------------------
@@ -457,7 +636,7 @@ def _refresh(bucket, base_config, settings, now) -> RefreshResult:
     staging = _staging_root(settings) / f"{run_id}-{time.time_ns():x}"
     staging.mkdir(parents=True)
     try:
-        stage_snapshot(bucket, plan, staging)
+        stage_snapshot(bucket, plan, staging, settings)
         prov = build_provenance(pointer, manifest, sha256_bytes(manifest_bytes), plan, base_config, now)
         _atomic_write_json(staging / PROVENANCE_FILE, prov)
         verify_snapshot_dir(staging)             # final whole-snapshot check before it can become visible
@@ -467,8 +646,10 @@ def _refresh(bucket, base_config, settings, now) -> RefreshResult:
         raise
     superseded = None
     try:  # informational: the run we activated is complete and immutable even if a newer one appeared
-        newer = publish.read_latest(bucket, settings.runs_prefix)
-        if newer and newer["run_id"] != run_id:
+        one_shot = replace(settings, download_attempts=1)     # bounded: explicit timeout, no retries
+        newer = publish.parse_pointer(_read(bucket, publish.latest_object(settings.runs_prefix), one_shot),
+                                      settings.runs_prefix)
+        if newer["run_id"] != run_id:
             superseded = newer["run_id"]
     except Exception:  # noqa: BLE001
         pass
@@ -523,11 +704,33 @@ def data_source_mode(environ=None) -> str:
     return value
 
 
+def _env_number(env, name: str, default, kind, low, high):
+    raw = env.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = kind(raw.strip())
+    except ValueError as exc:
+        raise SnapshotError(f"{name}={raw!r} is not a valid {kind.__name__}. Refusing to guess.") from exc
+    if not low <= value <= high:
+        raise SnapshotError(f"{name}={raw!r} must be between {low} and {high}.")
+    return value
+
+
 def settings_from_env(environ=None) -> SnapshotSettings:
     env = environ if environ is not None else os.environ
     s = SnapshotSettings(bucket=env.get("MANGOTWIN_GCS_BUCKET") or DEFAULT_BUCKET)
     if env.get("MANGOTWIN_SNAPSHOT_DIR"):
         s.cache_dir = Path(env["MANGOTWIN_SNAPSHOT_DIR"])
+    s.download_attempts = _env_number(env, "MANGOTWIN_SNAPSHOT_DOWNLOAD_ATTEMPTS", s.download_attempts, int, 1, 10)
+    s.connect_timeout = _env_number(env, "MANGOTWIN_SNAPSHOT_CONNECT_TIMEOUT_SECONDS", s.connect_timeout, float, 1, 120)
+    s.read_timeout = _env_number(env, "MANGOTWIN_SNAPSHOT_READ_TIMEOUT_SECONDS", s.read_timeout, float, 1, 300)
+    s.overall_deadline_seconds = _env_number(env, "MANGOTWIN_SNAPSHOT_DEADLINE_SECONDS", s.overall_deadline_seconds, float, 5, 3600)
+    fresh = env.get("MANGOTWIN_SNAPSHOT_FRESH_CLIENT")
+    if fresh is not None and fresh.strip():
+        if fresh.strip().lower() not in ("true", "false"):
+            raise SnapshotError(f"MANGOTWIN_SNAPSHOT_FRESH_CLIENT={fresh!r} must be true or false. Refusing to guess.")
+        s.fresh_client_per_request = fresh.strip().lower() == "true"
     return s
 
 
