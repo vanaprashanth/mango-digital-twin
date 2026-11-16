@@ -28,3 +28,6 @@ models/
 *.joblib
 *.pkl
 data/processed/muthukur_ml_training_dataset.csv
+
+# Generated ML research experiments
+data/experiments/
