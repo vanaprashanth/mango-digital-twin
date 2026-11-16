@@ -70,3 +70,25 @@ evidence of scientific accuracy; irrigation labels remain surrogate.
   only after size and SHA-256 match.
 - Tuning: `MANGOTWIN_SNAPSHOT_DOWNLOAD_ATTEMPTS` (1-10), `..._CONNECT_TIMEOUT_SECONDS`,
   `..._READ_TIMEOUT_SECONDS`, `..._DEADLINE_SECONDS`, `MANGOTWIN_SNAPSHOT_FRESH_CLIENT` (true/false).
+
+## Dashboard integration (optional; local files remain the default)
+
+`app/streamlit_app.py` resolves its data source once per script run, before any dataset path is built:
+`data_source = resolve_dashboard_source(); config = data_source.config`. Nothing else in the page code changed.
+
+| Setting | Effect |
+|---|---|
+| `MANGOTWIN_DATA_SOURCE` unset / `local` | Unchanged local files. No GCS import, no network, no cache directory. **Streamlit Community Cloud stays here.** |
+| `MANGOTWIN_DATA_SOURCE=gcs_snapshot` | One verified run for all published outputs; refresh at most every `MANGOTWIN_SNAPSHOT_REFRESH_SECONDS` (default 300, range 60-86400; 60 s after a failed refresh). |
+
+- **Sources:** published outputs (21 files) come from the active snapshot; SoilGrids, irrigation events (GitHub-backed),
+  ML model/metrics/feature importance/training dataset and everything unpublished keep their existing local paths.
+- **Fallback order:** fresh verified snapshot -> previously verified snapshot (with a warning) -> local files (with a warning).
+  Invalid settings or missing credentials produce a visible warning, never a crash.
+- **Caching:** every `st.cache_data` loader is keyed by file path, and snapshot paths contain the run id
+  (`runs/<run-id>/data/...`), so a new run cannot be served DataFrames cached for an older run; old entries
+  stay valid for sessions still on the old run. The refresh decision is process-wide (shared by sessions).
+- **Display:** sidebar panel with run id, execution time, integrity statement, validation status, satellite status and
+  observation dates, input versions. Main-area warnings for fallback, stale snapshot, and local irrigation events / SoilGrids
+  that differ from the versions the run used. Integrity is described as checksum verification, never as field validation.
+- **Not done:** no change to `requirements.txt`, Streamlit deployment settings, Cloud Run, IAM, workflows or irrigation persistence.

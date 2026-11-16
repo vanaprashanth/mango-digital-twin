@@ -40,6 +40,32 @@ _METADATA_PATH: Path = _config.path("pipeline_run_metadata_json")
 _DEFAULT_STALENESS_DAYS = 7
 
 
+# Per-session channel for the selected metadata path. Streamlit sessions share imported modules, so the
+# selection must NOT live in a module global: st.session_state is isolated per browser session.
+SESSION_METADATA_KEY = "mangotwin_pipeline_metadata_path"
+
+
+def select_session_metadata_path(path: Path) -> None:
+    """Record, for THIS session only, which pipeline metadata the freshness footers should read.
+
+    Called once per script run with the path from the selected data source (a verified
+    snapshot's metadata in snapshot mode; the local file by default).
+    """
+    st.session_state[SESSION_METADATA_KEY] = str(path)
+
+
+def resolve_metadata_path(explicit: Path | None = None, session_state=None) -> Path:
+    """explicit argument > this session's selection > the original local default."""
+    if explicit is not None:
+        return Path(explicit)
+    try:
+        state = st.session_state if session_state is None else session_state
+        chosen = state.get(SESSION_METADATA_KEY)
+    except Exception:  # no Streamlit runtime (plain scripts / unit tests)
+        chosen = None
+    return Path(chosen) if chosen else _METADATA_PATH
+
+
 def _parse_iso(ts: str | None) -> dt.datetime | None:
     """Parse an ISO-8601 UTC string from the metadata JSON, or return None."""
     if not ts:
@@ -72,6 +98,7 @@ def show_freshness_indicator(
     df: pd.DataFrame | None = None,
     label: str = "",
     staleness_warning_days: int = _DEFAULT_STALENESS_DAYS,
+    metadata_path: Path | None = None,
 ) -> None:
     """
     Render a compact data freshness indicator at the top of a dashboard page.
@@ -89,8 +116,11 @@ def show_freshness_indicator(
     staleness_warning_days : int
         Show a st.warning if the latest date is more than this many days old.
         Default is 7. Set to 0 to disable.
+    metadata_path : Path | None
+        Optional explicit pipeline-metadata file. If omitted, the path selected for this
+        session by ``select_session_metadata_path`` is used, else the local default.
     """
-    metadata = load_metadata_json(_METADATA_PATH)
+    metadata = load_metadata_json(resolve_metadata_path(metadata_path))
     latest_date = _latest_date_in_df(df)
     today = dt.date.today()
 

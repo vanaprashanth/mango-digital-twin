@@ -31,6 +31,8 @@ from app.sections.et0_validation import render_et0_validation_page
 from app.sections.data_sources_health import render_data_sources_health_page
 from app.navigation import DATA_SOURCES_PAGE, render_data_health_control, render_sidebar_navigation
 from app.theme import inject_theme
+from app.data_source_ui import render_data_source_notices, render_data_source_panel, resolve_dashboard_source
+from app.sections.freshness import select_session_metadata_path
 from src.utils.config import get_config
 from src.utils.soil_factor import soil_factor_label
 from src.utils.pipeline_metadata import load_metadata_json
@@ -45,7 +47,11 @@ from src.utils.validation import (
     MissingColumnsError,
 )
 
-config = get_config()
+# Data source: local files by default (MANGOTWIN_DATA_SOURCE unset/"local"). In optional
+# "gcs_snapshot" mode `config` resolves the published outputs from ONE verified run; SoilGrids,
+# irrigation events and ML artifacts keep their existing local paths. Resolved once per script run.
+data_source = resolve_dashboard_source()
+config = data_source.config
 
 DATA_PATH = config.path("historical_risk_csv")
 FORECAST_DATA_PATH = config.path("forecast_risk_csv")
@@ -67,12 +73,13 @@ FAO56_SENSITIVITY_SUMMARY_MD_PATH = config.path("fao56_sensitivity_summary_md")
 ET0_COMPARISON_CSV_PATH = config.path("et0_comparison_csv")
 ET0_COMPARISON_SUMMARY_MD_PATH = config.path("et0_comparison_summary_md")
 PIPELINE_METADATA_PATH = config.path("pipeline_run_metadata_json")
-IRRIGATION_EVENTS_PATH = config.path("irrigation_events_csv")
+IRRIGATION_EVENTS_PATH = config.path("irrigation_events_csv")  # always local / GitHub-backed
 FAO56_INTERPOLATED_KC_PATH = config.path("fao56_interpolated_kc_water_balance_csv")
 ML_MODEL_PATH = config.path("irrigation_priority_model_path")
 ML_MODEL_METRICS_PATH = config.path("ml_model_metrics_json")
 ML_FEATURE_IMPORTANCE_PATH = config.path("ml_feature_importance_csv")
 ML_TRAINING_DATASET_PATH = config.path("ml_training_dataset_csv")
+select_session_metadata_path(PIPELINE_METADATA_PATH)   # per-session: footers read the same run's metadata
 
 
 st.set_page_config(
@@ -82,6 +89,7 @@ st.set_page_config(
     initial_sidebar_state="auto",   # collapsed on mobile, open on desktop
 )
 inject_theme()
+render_data_source_notices(data_source)
 
 
 # ---------------------------------------------------------------------
@@ -552,6 +560,7 @@ if ET0_COMPARISON_SUMMARY_MD_PATH.exists():
 st.sidebar.markdown("### 🥭 MangoTwin Intelligence")
 st.sidebar.caption(f"{config.study_area.name} · {config.study_area.district} district, {config.study_area.state}")
 
+render_data_source_panel(data_source)
 render_data_health_control()
 page = render_sidebar_navigation()
 
