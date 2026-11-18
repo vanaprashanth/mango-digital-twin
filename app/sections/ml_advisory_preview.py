@@ -9,6 +9,7 @@ labels come from FAO-56/rule-based logic, not field observations.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -21,7 +22,16 @@ SURROGATE_WARNING = (
     "This model is trained on surrogate FAO-56/rule-based labels, "
     "not field-observed irrigation outcomes."
 )
-GENERATE_HINT = "Run python main.py --skip-soil-fetch to generate ML artifacts."
+DATASET_HINT = "Generate the training dataset locally with `python main.py --skip-soil-fetch`."
+MODEL_HINT = "Train and evaluate the model locally with `python -m src.ml.train_irrigation_priority_model`."
+GENERATE_HINT = f"{DATASET_HINT} {MODEL_HINT}"
+
+SNAPSHOT_LABEL = "Published evaluation snapshot — training dataset not deployed"
+MODEL_NOT_DEPLOYED = (
+    "The trained model binary is not deployed. This page displays committed evaluation artifacts "
+    "(metrics and feature importance) from the last published training run; no live inference is "
+    "available here and no predictions are made."
+)
 
 LIMITATIONS = [
     "Labels are surrogate: they are derived from the FAO-56 water balance and rule-based advisory logic.",
@@ -148,6 +158,102 @@ def confusion_matrix_frame(metrics: dict | None) -> pd.DataFrame | None:
         return None
 
 
+def _count(v) -> int | None:
+    return int(v) if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
+
+
+def _date_range(v) -> tuple[str, str] | None:
+    if not isinstance(v, (list, tuple)) or len(v) != 2:
+        return None
+    try:
+        start, end = (pd.Timestamp(x) for x in v)
+    except (ValueError, TypeError):
+        return None
+    if pd.isna(start) or pd.isna(end) or start > end:
+        return None
+    return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
+
+
+def _split_distribution(dist, rows: int | None) -> dict[str, int] | None:
+    """A class->count mapping, only if every count is valid and the total matches the stated row count."""
+    if not isinstance(dist, dict) or not dist:
+        return None
+    counts = {str(k): _count(v) for k, v in dist.items()}
+    if any(v is None for v in counts.values()):
+        return None
+    if rows is not None and sum(counts.values()) != rows:
+        return None
+    return counts
+
+
+def _timestamp(v) -> datetime | None:
+    if not isinstance(v, str):
+        return None
+    try:
+        return datetime.fromisoformat(v)
+    except ValueError:
+        return None
+
+
+def evaluation_snapshot(metrics: dict | None) -> dict | None:
+    """Validated dataset details taken ONLY from what the committed metrics JSON states.
+
+    Requires valid train and test sample counts; returns None otherwise. Date ranges and class
+    distributions are included only when they are present and internally consistent. Nothing is
+    reconstructed or inferred.
+    """
+    if not isinstance(metrics, dict):
+        return None
+    train_rows, test_rows = _count(metrics.get("train_rows")), _count(metrics.get("test_rows"))
+    if not train_rows or not test_rows:
+        return None
+    dist = metrics.get("target_distribution")
+    dist = dist if isinstance(dist, dict) else {}
+    distribution = {}
+    for split, rows in (("train", train_rows), ("test", test_rows)):
+        counts = _split_distribution(dist.get(split), rows)
+        if counts is not None:
+            distribution[split] = counts
+    return {
+        "train_rows": train_rows,
+        "test_rows": test_rows,
+        "train_dates": _date_range(metrics.get("train_date_range")),
+        "test_dates": _date_range(metrics.get("test_date_range")),
+        "distribution": distribution,
+        "trained_at": metrics.get("trained_at") if _timestamp(metrics.get("trained_at")) else None,
+    }
+
+
+def snapshot_distribution_frame(snapshot: dict | None) -> pd.DataFrame | None:
+    dist = (snapshot or {}).get("distribution")
+    if not dist:
+        return None
+    return pd.DataFrame(dist).fillna(0).astype(int).rename_axis("class").reset_index()
+
+
+def stale_metrics_note(dataset_path: "Path | str | None", metrics: dict | None) -> str | None:
+    """Note that the local dataset was rebuilt AFTER the published evaluation snapshot was trained.
+
+    Needs two explicit timestamps: ``built_at`` in the dataset's metadata file and ``trained_at`` in
+    the metrics. Observation dates are deliberately not compared: they measure data coverage, not
+    when anything was built or trained. Returns None when either timestamp is missing, unparseable,
+    or they are not comparable.
+    """
+    if dataset_path is None:
+        return None
+    path = Path(dataset_path)
+    meta = load_metrics(path.with_name(path.stem + "_metadata.json"))
+    built = _timestamp((meta or {}).get("built_at"))
+    trained = _timestamp((metrics or {}).get("trained_at"))
+    if built is None or trained is None or (built.tzinfo is None) != (trained.tzinfo is None):
+        return None
+    if built > trained:
+        return (f"The training dataset was rebuilt ({built:%Y-%m-%d %H:%M}) after the evaluation metrics "
+                f"were trained ({trained:%Y-%m-%d %H:%M}), so the metrics may not reflect the current "
+                f"dataset. {MODEL_HINT}")
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Page
 # ---------------------------------------------------------------------------
@@ -169,21 +275,25 @@ def render_ml_advisory_preview_page(
 
     # 1. Artifact status
     st.subheader("Model status")
+    model_ok = Path(model_path).exists()
     c1, c2, c3 = st.columns(3)
-    for col, label, p in (
-        (c1, "Model artifact", model_path),
-        (c2, "Metrics JSON", metrics_path),
-        (c3, "Feature importance CSV", importance_path),
-    ):
-        col.metric(label, "Available" if Path(p).exists() else "Missing")
-    if not all(Path(p).exists() for p in (model_path, metrics_path, importance_path)):
-        st.warning(GENERATE_HINT)
+    c1.metric("Model artifact", "Available (local)" if model_ok else "Not deployed")
+    c2.metric("Metrics JSON", "Available" if Path(metrics_path).exists() else "Missing")
+    c3.metric("Feature importance CSV", "Available" if Path(importance_path).exists() else "Missing")
+    if not model_ok:
+        st.info(MODEL_NOT_DEPLOYED)
+    else:
+        st.caption("Read-only: the local model binary is not used on this page; no predictions are made.")
+    missing = [n for n, p in (("metrics JSON", metrics_path), ("feature importance CSV", importance_path))
+               if not Path(p).exists()]
+    if missing:
+        st.warning(f"Missing evaluation artifact(s): {', '.join(missing)}. {MODEL_HINT}")
 
     # 2. Metrics
     metrics = load_metrics(metrics_path)
     st.subheader("Evaluation metrics (chronological hold-out)")
     if metrics is None:
-        st.warning(f"Metrics not available. {GENERATE_HINT}")
+        st.warning(f"Metrics not available. {MODEL_HINT}")
     else:
         pairs = format_metrics_summary(metrics)
         for start in range(0, len(pairs), 4):
@@ -212,7 +322,7 @@ def render_ml_advisory_preview_page(
     st.subheader("Top feature importances")
     imp = load_feature_importance(importance_path, top_n=15)
     if imp.empty:
-        st.warning(f"Feature importance not available. {GENERATE_HINT}")
+        st.warning(f"Feature importance not available. {MODEL_HINT}")
     else:
         fig = px.bar(
             imp.sort_values("importance"), x="importance", y="feature", orientation="h",
@@ -226,15 +336,39 @@ def render_ml_advisory_preview_page(
     # 4. Dataset status
     st.subheader("ML training dataset")
     ds = summarize_training_dataset(dataset_path)
-    if ds is None:
-        st.warning(f"Training dataset not available. {GENERATE_HINT}")
-    else:
+    if ds is not None:
         d1, d2 = st.columns(2)
         d1.metric("Rows", ds["rows"])
         d2.metric("Date range", f"{ds['date_min'] or 'n/a'} to {ds['date_max'] or 'n/a'}")
         if ds["target_distribution"] is not None:
             st.markdown(f"**{TARGET_COLUMN} distribution**")
             st.dataframe(ds["target_distribution"], use_container_width=True, hide_index=True)
+        note = stale_metrics_note(dataset_path, metrics)
+        if note:
+            st.warning(note)
+    else:
+        snap = evaluation_snapshot(metrics)
+        if snap is None:
+            st.warning("Training dataset not available and the published metrics do not state its sample "
+                       f"counts. {DATASET_HINT}")
+        else:
+            st.info(f"**{SNAPSHOT_LABEL}.** These details come from the committed evaluation metrics, not "
+                    f"from a dataset file. The raw dataset is intentionally not versioned. {DATASET_HINT}")
+            t1, t2 = st.columns(2)
+            t1.metric("Training samples", snap["train_rows"])
+            t2.metric("Test samples", snap["test_rows"])
+            if snap["train_dates"] or snap["test_dates"]:
+                d1, d2 = st.columns(2)
+                if snap["train_dates"]:
+                    d1.metric("Training dates", " to ".join(snap["train_dates"]))
+                if snap["test_dates"]:
+                    d2.metric("Test dates", " to ".join(snap["test_dates"]))
+            frame = snapshot_distribution_frame(snap)
+            if frame is not None:
+                st.markdown("**Class distribution (published, per split)**")
+                st.dataframe(frame, use_container_width=True, hide_index=True)
+            if snap["trained_at"]:
+                st.caption(f"Evaluation snapshot trained at {snap['trained_at']}.")
 
     # 5. Limitations
     st.subheader("Limitations")
