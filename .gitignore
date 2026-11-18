@@ -31,3 +31,6 @@ data/processed/muthukur_ml_training_dataset.csv
 
 # Generated ML research experiments
 data/experiments/
+
+# Local ISRO satellite imagery and experiments
+data/satellite_experiments/
