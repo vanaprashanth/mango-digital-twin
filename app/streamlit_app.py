@@ -33,6 +33,7 @@ from app.navigation import DATA_SOURCES_PAGE, render_data_health_control, render
 from app.theme import inject_theme
 from app.data_source_ui import render_data_source_notices, render_data_source_panel, resolve_dashboard_source
 from app.sections.freshness import select_session_metadata_path
+from app.file_signature import cache_signature
 from src.utils.config import get_config
 from src.utils.soil_factor import soil_factor_label
 from src.utils.pipeline_metadata import load_metadata_json
@@ -117,8 +118,13 @@ def classify_risk(score: float) -> str:
 
 
 @st.cache_data
-def load_data(path: Path) -> pd.DataFrame:
-    """Load a processed mango risk dataset and check it has the expected columns."""
+def load_data(path: Path, signature: tuple | None) -> pd.DataFrame:
+    """Load a processed mango risk dataset and check it has the expected columns.
+
+    ``signature`` (file mtime + size, see app/file_signature.py) is deliberately a normal argument,
+    not ``_signature``: Streamlit hashes it into the cache key, so a changed CSV is re-read
+    without restarting the app. It is None for immutable snapshot paths.
+    """
     df = pd.read_csv(path)
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date")
@@ -181,7 +187,7 @@ def safe_load_data(path: Path, label: str) -> pd.DataFrame | None:
     file is missing, empty, or malformed. Shows a friendly warning instead.
     """
     try:
-        return load_data(path)
+        return load_data(path, cache_signature(path, data_source.is_snapshot))
     except FileNotFoundError:
         st.warning(f"{label} file not found at `{path}`. This section will be unavailable.")
     except MissingColumnsError as exc:
