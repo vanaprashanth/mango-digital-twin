@@ -82,3 +82,10 @@ logs/
 *.log
 
 !cloudbuild.pipeline.yaml
+
+
+# Private research-site data: never uploaded (also covered by the default deny above)
+private/
+**/private/
+*.kml
+**/*.kml

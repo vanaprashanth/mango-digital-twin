@@ -1,0 +1,40 @@
+# SYNTHETIC EXAMPLE of a private research-site configuration (Phase 1).
+#
+# Every value below is INVENTED. The coordinates are placeholders near latitude/longitude 0,0 and do not
+# describe any real property. This file is public and is never read by the pipeline or the dashboard.
+#
+# To register a real site:
+#   1. Create  private/sites/<SITE_ID>/site.yaml  from this template. The directory name must equal site_id.
+#      private/ is excluded from Git, Docker build contexts and GCP upload contexts.
+#   2. Validate and convert the boundary (the KML is copied into the private directory):
+#        python -m src.sites.validate_boundary --site-id <SITE_ID> --kml <path-to-kml>
+#   3. Never commit the KML, a derived GeoJSON, the validation report, or this file filled in with real data.
+#
+# Boundary geometry is kept apart from satellite, weather and crop-model settings:
+# processing_profiles is reserved for later phases and must stay empty for now.
+
+schema_version: 1
+site_id: EXAMPLE_ORCHARD_000          # ^[A-Z][A-Z0-9_]{2,63}$ and equal to the directory name
+site_type: mango_orchard
+
+reference_point:                      # a point that must lie INSIDE the boundary
+  latitude: 0.0005                    # SYNTHETIC
+  longitude: 0.0005                   # SYNTHETIC
+
+comparison_points:                    # optional; each is checked against the boundary
+  - label: original_study_point       # plain name (letters, digits, . _ -)
+    latitude: 0.0100                  # SYNTHETIC
+    longitude: 0.0100                 # SYNTHETIC
+    expected: outside                 # inside | outside
+
+boundary:
+  kml: boundary.kml                   # original file, copied byte-for-byte
+  geojson: boundary.geojson           # derived, counter-clockwise, EPSG:4326
+  report: validation_report.json      # checks and provenance; contains no coordinates
+  expected:                           # optional acceptance figures from an independent WGS84 geodesic calculation
+    area_m2: 10000.0
+    area_tolerance_pct: 0.05
+    perimeter_m: 400.0
+    perimeter_tolerance_pct: 0.1
+
+processing_profiles: {}               # reserved (satellite / weather / crop-model profiles come later)

@@ -34,3 +34,8 @@ data/experiments/
 
 # Local ISRO satellite imagery and experiments
 data/satellite_experiments/
+
+# Private research-site data (orchard boundaries, local site configs). Never commit.
+# Targeted on purpose: no global *.geojson rule (a reviewed public boundary file may be added later).
+private/
+*.kml
