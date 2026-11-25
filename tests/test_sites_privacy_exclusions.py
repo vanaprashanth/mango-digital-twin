@@ -115,11 +115,17 @@ def _imports(path: Path) -> set[str]:
     return found
 
 
+# Private research tools that are allowed to build on the site registry. Nothing in production may import them.
+SANCTIONED_RESEARCH_CONSUMERS = {"src/isro/orchard_ndvi.py"}
+
+
 def test_no_production_code_imports_the_sites_package():
     offenders = []
     for base in ("app", "src", "scripts"):
         for f in (REPO / base).rglob("*.py"):
             if "src/sites" in f.as_posix() or "__pycache__" in f.parts:
+                continue
+            if f.relative_to(REPO).as_posix() in SANCTIONED_RESEARCH_CONSUMERS:
                 continue
             if any(m == "src.sites" or m.startswith("src.sites.") for m in _imports(f)):
                 offenders.append(f.relative_to(REPO).as_posix())
