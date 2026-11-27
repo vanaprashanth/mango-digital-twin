@@ -116,7 +116,7 @@ def _imports(path: Path) -> set[str]:
 
 
 # Private research tools that are allowed to build on the site registry. Nothing in production may import them.
-SANCTIONED_RESEARCH_CONSUMERS = {"src/isro/orchard_ndvi.py"}
+SANCTIONED_RESEARCH_CONSUMERS = {"src/isro/orchard_ndvi.py", "src/isro/orchard_boa_ndvi.py"}
 
 
 def test_no_production_code_imports_the_sites_package():

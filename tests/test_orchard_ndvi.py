@@ -415,7 +415,7 @@ def test_existing_experiment_and_requirements_are_untouched():
 def test_production_code_does_not_import_the_orchard_analysis():
     for base in ("app", "src", "scripts"):
         for f in (REPO / base).rglob("*.py"):
-            if f.name == "orchard_ndvi.py" or "__pycache__" in f.parts:
+            if f.name in ("orchard_ndvi.py", "orchard_boa_ndvi.py") or "__pycache__" in f.parts:
                 continue
             assert "orchard_ndvi" not in f.read_text(encoding="utf-8-sig", errors="ignore"), f
     assert "orchard_ndvi" not in (REPO / "main.py").read_text(encoding="utf-8-sig")
